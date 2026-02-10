@@ -22,11 +22,6 @@ ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
     'unfold',
-    'unfold.contrib.filters',
-    'unfold.contrib.forms',
-    'unfold.contrib.import_export',
-    'unfold.contrib.guardian',
-    'unfold.contrib.simple_history',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -151,3 +146,67 @@ SIMPLE_JWT = {
 
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = True # In development
+
+UNFOLD = {
+    "SITE_TITLE": "XPENSE Admin",
+    "SITE_HEADER": "XPENSE Dashboard",
+    "SITE_URL": "/",
+    "SITE_SYMBOL": "speed",  # Material Symbols name
+    "SHOW_HISTORY": True, # show/hide "History" button, default: True
+    "SHOW_VIEW_ON_SITE": False,
+    "COLORS": {
+        "primary": {
+            "50": "250 245 255",
+            "100": "243 232 255",
+            "200": "233 213 255",
+            "300": "216 180 254",
+            "400": "192 132 252",
+            "500": "168 85 247",
+            "600": "147 51 234",
+            "700": "126 34 206",
+            "800": "107 33 168",
+            "900": "88 28 135",
+            "950": "59 7 100",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": [
+            {
+                "title": "Finance Management",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Dashboard",
+                        "icon": "dashboard",
+                        "link": "/admin/",
+                    },
+                    {
+                        "title": "Accounts",
+                        "icon": "account_balance",
+                        "link": "/admin/tracker/account/",
+                    },
+                    {
+                        "title": "Loans",
+                        "icon": "handshake",
+                        "link": "/admin/tracker/loan/",
+                    },
+                    {
+                        "title": "Transactions",
+                        "icon": "receipt_long",
+                        "link": "/admin/tracker/transaction/",
+                    },
+                ],
+            },
+        ],
+    },
+}
+
+# UNFOLD = {
+#     # "THEME": "slate",          # or "day", "night", your own…
+#     "SIDEBAR": {"compact": True},
+#     "SITE_HEADER": "Codortal Administration",   # replaces “Django administration”
+#     "SITE_TITLE":  "Codortal Admin Portal",
+#     "BORDER_RADIUS": "6px",
+# }
