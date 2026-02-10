@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'drf_spectacular',
     
     # Local apps
     'tracker',
@@ -134,6 +135,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 # Simple JWT settings
@@ -148,6 +150,35 @@ SIMPLE_JWT = {
 # CORS settings
 CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
 CORS_ALLOW_ALL_ORIGINS = DEBUG # Use allow all only if debug is true if you want, but better to use allowed origins
+
+# drf-spectacular settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'XPENSE Tracker API',
+    'DESCRIPTION': 'API documentation for XPENSE - Personal Finance Tracker',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SCHEMA_PATH_PREFIX': '/api/',
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+        'displayOperationId': True,
+    },
+    'SECURITY': [
+        {
+            'Bearer': []
+        }
+    ],
+    'APPEND_COMPONENTS': {
+        'securitySchemes': {
+            'Bearer': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+            }
+        }
+    },
+}
 
 UNFOLD = {
     "SITE_TITLE": "XPENSE Admin",

@@ -2,10 +2,20 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.db import transaction
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from .models import Account, Loan, Transaction
 from .serializers import AccountSerializer, LoanSerializer, TransactionSerializer, UserSerializer
 from django.contrib.auth.models import User
 
+@extend_schema_view(
+    list=extend_schema(description='List all users', tags=['Users']),
+    create=extend_schema(description='Register a new user', tags=['Users']),
+    retrieve=extend_schema(description='Get user details', tags=['Users']),
+    update=extend_schema(description='Update user', tags=['Users']),
+    partial_update=extend_schema(description='Partially update user', tags=['Users']),
+    destroy=extend_schema(description='Delete user', tags=['Users']),
+)
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -16,6 +26,14 @@ class UserViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
+@extend_schema_view(
+    list=extend_schema(description='List all accounts for the authenticated user', tags=['Accounts']),
+    create=extend_schema(description='Create a new account', tags=['Accounts']),
+    retrieve=extend_schema(description='Get account details', tags=['Accounts']),
+    update=extend_schema(description='Update account', tags=['Accounts']),
+    partial_update=extend_schema(description='Partially update account', tags=['Accounts']),
+    destroy=extend_schema(description='Delete account', tags=['Accounts']),
+)
 class AccountViewSet(viewsets.ModelViewSet):
     serializer_class = AccountSerializer
 
@@ -25,6 +43,14 @@ class AccountViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+@extend_schema_view(
+    list=extend_schema(description='List all loans for the authenticated user', tags=['Loans']),
+    create=extend_schema(description='Create a new loan record', tags=['Loans']),
+    retrieve=extend_schema(description='Get loan details', tags=['Loans']),
+    update=extend_schema(description='Update loan', tags=['Loans']),
+    partial_update=extend_schema(description='Partially update loan', tags=['Loans']),
+    destroy=extend_schema(description='Delete loan', tags=['Loans']),
+)
 class LoanViewSet(viewsets.ModelViewSet):
     serializer_class = LoanSerializer
 
@@ -34,6 +60,14 @@ class LoanViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+@extend_schema_view(
+    list=extend_schema(description='List all transactions for the authenticated user', tags=['Transactions']),
+    create=extend_schema(description='Create a new transaction (automatically updates account balance and loan amounts)', tags=['Transactions']),
+    retrieve=extend_schema(description='Get transaction details', tags=['Transactions']),
+    update=extend_schema(description='Update transaction', tags=['Transactions']),
+    partial_update=extend_schema(description='Partially update transaction', tags=['Transactions']),
+    destroy=extend_schema(description='Delete transaction (reverses account and loan updates)', tags=['Transactions']),
+)
 class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
 
