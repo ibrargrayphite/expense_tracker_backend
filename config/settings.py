@@ -152,7 +152,7 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG # Use allow all only if debug is true if you want
 UNFOLD = {
     "SITE_TITLE": "XPENSE Admin",
     "SITE_HEADER": "XPENSE Dashboard",
-    "SITE_URL": "/",
+    "SITE_URL": None,
     "SITE_SYMBOL": "speed",  # Material Symbols name
     "SHOW_HISTORY": True, # show/hide "History" button, default: True
     "SHOW_VIEW_ON_SITE": False,
