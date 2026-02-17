@@ -150,11 +150,9 @@ SIMPLE_JWT = {
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = ["https://expensetrackerbackend-production-0360.up.railway.app"]
+CORS_ALLOWED_ORIGINS = ["*"]
 CORS_ALLOW_ALL_ORIGINS = DEBUG # Use allow all only if debug is true if you want, but better to use allowed origins
-CSRF_TRUSTED_ORIGINS = [
-    "https://expensetrackerbackend-production-0360.up.railway.app"
-]
+CSRF_TRUSTED_ORIGINS = ["*"]
 CORS_ALLOW_METHODS = [
     "GET",
     "POST",
