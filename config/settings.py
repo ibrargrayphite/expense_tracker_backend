@@ -44,6 +44,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware', # Must be at the top
     'django.middleware.security.SecurityMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -149,8 +150,31 @@ SIMPLE_JWT = {
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
+CORS_ALLOWED_ORIGINS = ["https://expensetrackerbackend-production-0360.up.railway.app"]
 CORS_ALLOW_ALL_ORIGINS = DEBUG # Use allow all only if debug is true if you want, but better to use allowed origins
+CSRF_TRUSTED_ORIGINS = [
+    "https://expensetrackerbackend-production-0360.up.railway.app"
+]
+CORS_ALLOW_METHODS = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+]
+CORS_ALLOW_HEADERS = [
+    "Authorization",
+    "Content-Type",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+    "User-Agent",
+    "X-CSRFTOKEN",
+    "Access-Control-Allow-Origin",
+    "Access-Control-Allow-Headers",
+]
+CORS_ALLOW_CREDENTIALS = True
 
 # drf-spectacular settings
 SPECTACULAR_SETTINGS = {
