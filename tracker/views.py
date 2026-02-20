@@ -4,8 +4,8 @@ from rest_framework.decorators import action
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from .models import Account, Loan, Transaction
-from .serializers import AccountSerializer, LoanSerializer, TransactionSerializer, UserSerializer
+from .models import Account, Loan, Transaction, Contact, ContactAccount
+from .serializers import AccountSerializer, LoanSerializer, TransactionSerializer, UserSerializer, ContactSerializer, ContactAccountSerializer
 from django.contrib.auth.models import User
 
 @extend_schema_view(
@@ -59,6 +59,29 @@ class LoanViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+@extend_schema_view(
+    list=extend_schema(description='List all contacts for the authenticated user', tags=['Contacts']),
+    create=extend_schema(description='Create a new contact', tags=['Contacts']),
+    retrieve=extend_schema(description='Get contact details', tags=['Contacts']),
+    update=extend_schema(description='Update contact', tags=['Contacts']),
+    partial_update=extend_schema(description='Partially update contact', tags=['Contacts']),
+    destroy=extend_schema(description='Delete contact', tags=['Contacts']),
+)
+class ContactViewSet(viewsets.ModelViewSet):
+    serializer_class = ContactSerializer
+
+    def get_queryset(self):
+        return Contact.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class ContactAccountViewSet(viewsets.ModelViewSet):
+    serializer_class = ContactAccountSerializer
+
+    def get_queryset(self):
+        return ContactAccount.objects.filter(contact__user=self.request.user)
 
 @extend_schema_view(
     list=extend_schema(description='List all transactions for the authenticated user', tags=['Transactions']),

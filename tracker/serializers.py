@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Account, Loan, Transaction
+from .models import Account, Loan, Transaction, Contact, ContactAccount
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -23,7 +23,22 @@ class AccountSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('user',)
 
+class ContactAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactAccount
+        fields = '__all__'
+
+class ContactSerializer(serializers.ModelSerializer):
+    accounts = ContactAccountSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Contact
+        fields = '__all__'
+        read_only_fields = ('user',)
+
 class LoanSerializer(serializers.ModelSerializer):
+    contact_name = serializers.CharField(source='contact.first_name', read_only=True)
+    
     class Meta:
         model = Loan
         fields = '__all__'
