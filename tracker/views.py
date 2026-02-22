@@ -101,7 +101,20 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         instance = serializer.save(user=self.request.user)
         account = instance.account
-        loan = instance.loan
+        
+        # If it's a new loan or lending from transaction page (where contact is provided but loan isn't)
+        if instance.type in ['LOAN_TAKEN', 'MONEY_LENT'] and instance.contact and not instance.loan:
+            loan_type = 'TAKEN' if instance.type == 'LOAN_TAKEN' else 'LENT'
+            new_loan = Loan.objects.create(
+                user=instance.user,
+                contact=instance.contact,
+                type=loan_type,
+                total_amount=0, # Will be updated in the common update block below
+                remaining_amount=0,
+                description=instance.note or f"{instance.type} recorded on {instance.date.strftime('%Y-%m-%d') if instance.date else 'today'}"
+            )
+            instance.loan = new_loan
+            instance.save()
 
         # Update account balance
         if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
@@ -111,6 +124,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         account.save()
 
         # Update loan remaining amount
+        loan = instance.loan
         if loan:
             if instance.type == 'REPAYMENT':
                 loan.remaining_amount -= instance.amount
