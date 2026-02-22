@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from .models import Account, Loan, Transaction, Contact, ContactAccount
+from .models import Account, Loan, Transaction, Contact, ContactAccount, TransactionSplit
 from .serializers import AccountSerializer, LoanSerializer, TransactionSerializer, UserSerializer, ContactSerializer, ContactAccountSerializer
 from django.contrib.auth.models import User
 
@@ -99,31 +99,54 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
+        import json
         instance = serializer.save(user=self.request.user)
-        account = instance.account
         
-        # If it's a new loan or lending from transaction page (where contact is provided but loan isn't)
+        # 1. Handle Automatic Loan Creation (if applicable)
         if instance.type in ['LOAN_TAKEN', 'MONEY_LENT'] and instance.contact and not instance.loan:
             loan_type = 'TAKEN' if instance.type == 'LOAN_TAKEN' else 'LENT'
             new_loan = Loan.objects.create(
                 user=instance.user,
                 contact=instance.contact,
                 type=loan_type,
-                total_amount=0, # Will be updated in the common update block below
+                total_amount=0, 
                 remaining_amount=0,
-                description=instance.note or f"{instance.type} recorded on {instance.date.strftime('%Y-%m-%d') if instance.date else 'today'}"
+                description=instance.note
             )
             instance.loan = new_loan
             instance.save()
 
-        # Update account balance
-        if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-            account.balance += instance.amount
-        elif instance.type in ['EXPENSE', 'MONEY_LENT', 'REPAYMENT']:
-            account.balance -= instance.amount
-        account.save()
+        # 2. Handle Account Splits & Balance Updates
+        splits_data = self.request.data.get('splits')
+        if isinstance(splits_data, str):
+            try:
+                splits_data = json.loads(splits_data)
+            except:
+                splits_data = []
 
-        # Update loan remaining amount
+        if splits_data and len(splits_data) > 0:
+            for split in splits_data:
+                acc_id = split.get('account')
+                amt = int(split.get('amount'))
+                acc = Account.objects.get(id=acc_id, user=instance.user)
+                TransactionSplit.objects.create(transaction=instance, account=acc, amount=amt)
+                
+                # Update balance for each split account
+                if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                    acc.balance += amt
+                else:
+                    acc.balance -= amt
+                acc.save()
+        elif instance.account:
+            # Simple transaction (one account)
+            account = instance.account
+            if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                account.balance += instance.amount
+            else:
+                account.balance -= instance.amount
+            account.save()
+
+        # 3. Update Loan Totals
         loan = instance.loan
         if loan:
             if instance.type == 'REPAYMENT':
@@ -137,25 +160,31 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 loan.remaining_amount += instance.amount
                 loan.total_amount += instance.amount
             
-            if loan.remaining_amount <= 0:
-                loan.is_closed = True
-            else:
-                loan.is_closed = False
+            loan.is_closed = loan.remaining_amount <= 0
             loan.save()
 
     @transaction.atomic
     def perform_destroy(self, instance):
-        account = instance.account
-        loan = instance.loan
-
-        # Reverse account balance update
-        if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-            account.balance -= instance.amount
-        elif instance.type in ['EXPENSE', 'MONEY_LENT', 'REPAYMENT']:
-            account.balance += instance.amount
-        account.save()
+        # Reverse balance updates for all accounts involved
+        splits = instance.splits.all()
+        if splits.exists():
+            for split in splits:
+                acc = split.account
+                if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                    acc.balance -= split.amount
+                else:
+                    acc.balance += split.amount
+                acc.save()
+        elif instance.account:
+            account = instance.account
+            if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                account.balance -= instance.amount
+            else:
+                account.balance += instance.amount
+            account.save()
 
         # Reverse loan update
+        loan = instance.loan
         if loan:
             if instance.type == 'REPAYMENT':
                 loan.remaining_amount += instance.amount
@@ -168,8 +197,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 loan.remaining_amount -= instance.amount
                 loan.total_amount -= instance.amount
             
-            if loan.remaining_amount > 0:
-                loan.is_closed = False
+            loan.is_closed = loan.remaining_amount <= 0
             loan.save()
         
         instance.delete()

@@ -74,7 +74,7 @@ class Transaction(models.Model):
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
-    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='transactions')
+    account = models.ForeignKey(Account, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
     contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
     loan = models.ForeignKey(Loan, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
     amount = models.DecimalField(max_digits=12, decimal_places=2)
@@ -91,4 +91,12 @@ class Transaction(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.type} - {self.amount} ({self.account.bank_name})"
+        return f"{self.type} - {self.amount}"
+
+class TransactionSplit(models.Model):
+    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='splits')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='splits')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.transaction.type} Split: {self.account.bank_name} - {self.amount}"

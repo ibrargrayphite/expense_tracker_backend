@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Account, Loan, Transaction, Contact, ContactAccount
+from .models import Account, Loan, Transaction, Contact, ContactAccount, TransactionSplit
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -67,12 +67,20 @@ class LoanSerializer(serializers.ModelSerializer):
             return f"{obj.contact.first_name} {obj.contact.last_name}"
         return obj.person_name
 
+class TransactionSplitSerializer(serializers.ModelSerializer):
+    account_name = serializers.CharField(source='account.bank_name', read_only=True)
+    
+    class Meta:
+        model = TransactionSplit
+        fields = ['id', 'account', 'account_name', 'amount']
+
 class TransactionSerializer(serializers.ModelSerializer):
+    splits = TransactionSplitSerializer(many=True, read_only=True)
+    
     class Meta:
         model = Transaction
         fields = '__all__'
         read_only_fields = ('user',)
 
     def create(self, validated_data):
-        # We'll handle account balance and loan remaining amount updates in the view or a service
         return super().create(validated_data)
