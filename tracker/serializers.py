@@ -17,11 +17,56 @@ class UserSerializer(serializers.ModelSerializer):
         )
         return user
 
+class TransactionSplitSerializer(serializers.ModelSerializer):
+    account_name = serializers.CharField(source='account.bank_name', read_only=True)
+    
+    class Meta:
+        model = TransactionSplit
+        fields = ['id', 'account', 'account_name', 'amount']
+
+class TransactionSerializer(serializers.ModelSerializer):
+    splits = TransactionSplitSerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = Transaction
+        fields = '__all__'
+        read_only_fields = ('user',)
+
+    def create(self, validated_data):
+        return super().create(validated_data)
+
+class LoanSerializer(serializers.ModelSerializer):
+    contact_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Loan
+        fields = '__all__'
+        read_only_fields = ('user',)
+
+    def get_contact_name(self, obj):
+        if obj.contact:
+            return f"{obj.contact.first_name} {obj.contact.last_name}"
+        return obj.person_name
+
 class AccountSerializer(serializers.ModelSerializer):
+    transactions = serializers.SerializerMethodField()
+    
     class Meta:
         model = Account
         fields = '__all__'
         read_only_fields = ('user',)
+
+    def get_transactions(self, obj):
+        from .models import Transaction, TransactionSplit
+        from django.db.models import Q
+        
+        # Get transactions where this account is either the primary account or part of a split
+        split_transactions = TransactionSplit.objects.filter(account=obj).values_list('transaction_id', flat=True)
+        transactions = Transaction.objects.filter(
+            Q(account=obj) | Q(id__in=split_transactions)
+        ).order_by('-date')[:10] # Limit to 10 most recent
+        
+        return TransactionSerializer(transactions, many=True).data
 
     def validate(self, data):
         bank_name = data.get('bank_name')
@@ -44,6 +89,8 @@ class ContactAccountSerializer(serializers.ModelSerializer):
 
 class ContactSerializer(serializers.ModelSerializer):
     accounts = ContactAccountSerializer(many=True, read_only=True)
+    loans = LoanSerializer(many=True, read_only=True)
+    transactions = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
     
     class Meta:
@@ -51,36 +98,10 @@ class ContactSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('user',)
 
+    def get_transactions(self, obj):
+        # Limit to 10 most recent
+        transactions = obj.transactions.all().order_by('-date')[:10]
+        return TransactionSerializer(transactions, many=True).data
+
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
-
-class LoanSerializer(serializers.ModelSerializer):
-    contact_name = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Loan
-        fields = '__all__'
-        read_only_fields = ('user',)
-
-    def get_contact_name(self, obj):
-        if obj.contact:
-            return f"{obj.contact.first_name} {obj.contact.last_name}"
-        return obj.person_name
-
-class TransactionSplitSerializer(serializers.ModelSerializer):
-    account_name = serializers.CharField(source='account.bank_name', read_only=True)
-    
-    class Meta:
-        model = TransactionSplit
-        fields = ['id', 'account', 'account_name', 'amount']
-
-class TransactionSerializer(serializers.ModelSerializer):
-    splits = TransactionSplitSerializer(many=True, read_only=True)
-    
-    class Meta:
-        model = Transaction
-        fields = '__all__'
-        read_only_fields = ('user',)
-
-    def create(self, validated_data):
-        return super().create(validated_data)
