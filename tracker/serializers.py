@@ -92,6 +92,7 @@ class ContactSerializer(serializers.ModelSerializer):
     loans = LoanSerializer(many=True, read_only=True)
     transactions = serializers.SerializerMethodField()
     full_name = serializers.SerializerMethodField()
+    loan_stats = serializers.SerializerMethodField()
     
     class Meta:
         model = Contact
@@ -105,3 +106,13 @@ class ContactSerializer(serializers.ModelSerializer):
 
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
+
+    def get_loan_stats(self, obj):
+        loans = obj.loans.all()
+        total_loaned = sum(loan.remaining_amount for loan in loans if loan.type == 'TAKEN')
+        total_lent = sum(loan.remaining_amount for loan in loans if loan.type == 'LENT')
+        return {
+            'total_loaned': float(total_loaned),
+            'total_lent': float(total_lent),
+            'net_balance': float(total_lent - total_loaned)
+        }

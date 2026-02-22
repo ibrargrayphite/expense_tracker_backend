@@ -10,6 +10,7 @@ class Account(models.Model):
         ('SadaPay', 'SadaPay'),
         ('Bank Alfalah', 'Bank Alfalah'),
         ('Meezan Bank', 'Meezan Bank'),
+        ('HBL', 'HBL'),
     ]
     
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='accounts')
