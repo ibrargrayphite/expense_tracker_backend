@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 
 class Account(models.Model):
     BANK_CHOICES = [
+        ('Cash', 'Cash'),
         ('JazzCash', 'JazzCash'),
         ('EasyPaisa', 'EasyPaisa'),
         ('Nayapay', 'Nayapay'),
@@ -15,6 +16,7 @@ class Account(models.Model):
     bank_name = models.CharField(max_length=50, choices=BANK_CHOICES)
     account_name = models.CharField(max_length=100, help_text="To distinguish multiple accounts with same bank")
     account_number = models.CharField(max_length=50, blank=True, null=True)
+    iban = models.CharField(max_length=50, blank=True, null=True)
     balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
