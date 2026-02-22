@@ -17,7 +17,7 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['localhost', 'expensetrackerbackend-production-0360.up.railway.app', 'magenta-tartufo-f4b4b1.netlify.app']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'expensetrackerbackend-production-0360.up.railway.app', 'magenta-tartufo-f4b4b1.netlify.app']
 
 
 # Application definition
@@ -116,14 +116,14 @@ USE_TZ = True
 
 # Email settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'  # or your provider
+EMAIL_HOST = 'smtp.sendgrid.net'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = config('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
+EMAIL_HOST_USER = 'apikey'
+EMAIL_HOST_PASSWORD = config('SENDGRID_API_KEY')
 
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+DEFAULT_FROM_EMAIL = config('SENDGRID_FROM_EMAIL')
 
 FRONTEND_URL = config('FRONTEND_URL')
 
@@ -166,12 +166,14 @@ SIMPLE_JWT = {
 # # CORS settings
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
+    'http://127.0.0.1:8000',
     'https://expensetrackerbackend-production-0360.up.railway.app',
     'https://magenta-tartufo-f4b4b1.netlify.app',
 ]
-# CORS_ALLOW_ALL_ORIGINS = DEBUG # Use allow all only if debug is true if you want, but better to use allowed origins
+CORS_ALLOW_ALL_ORIGINS = DEBUG # Use allow all only if debug is true if you want, but better to use allowed origins
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
+    'http://127.0.0.1:8000',
     'https://expensetrackerbackend-production-0360.up.railway.app',
     'https://magenta-tartufo-f4b4b1.netlify.app',
 ]
