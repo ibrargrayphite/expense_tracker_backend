@@ -26,6 +26,11 @@ class UserViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
+
 @extend_schema_view(
     list=extend_schema(description='List all accounts for the authenticated user', tags=['Accounts']),
     create=extend_schema(description='Create a new account', tags=['Accounts']),
