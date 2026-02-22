@@ -26,6 +26,33 @@ class UserViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
+    def create(self, request, *args, **kwargs):
+        username = request.data.get('username')
+        if User.objects.filter(username=username).exists():
+            first_name = request.data.get('first_name', '').lower()
+            last_name = request.data.get('last_name', '').lower()
+            
+            import random
+            import string
+            
+            base = f"{first_name}{last_name}"
+            if not base:
+                base = "user"
+            
+            suggestion = ""
+            while True:
+                suffix = ''.join(random.choices(string.digits, k=3))
+                suggestion = f"{base}{suffix}"
+                if not User.objects.filter(username=suggestion).exists():
+                    break
+            
+            return Response({
+                'username': ['A user with that username already exists.'],
+                'suggestion': suggestion
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        return super().create(request, *args, **kwargs)
+
     @action(detail=False, methods=['get'])
     def me(self, request):
         serializer = self.get_serializer(request.user)
