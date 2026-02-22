@@ -17,7 +17,7 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['localhost', 'expensetrackerbackend-production-0360.up.railway.app']
 
 
 # Application definition
@@ -30,13 +30,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # Third party apps
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
     'drf_spectacular',
-    
+
     # Local apps
     'tracker',
 ]
@@ -164,32 +164,28 @@ SIMPLE_JWT = {
 }
 
 # # CORS settings
-# CORS_ALLOWED_ORIGINS = ["*"]
+CORS_ALLOWED_ORIGINS = ['localhost', 'expensetrackerbackend-production-0360.up.railway.app']
 # CORS_ALLOW_ALL_ORIGINS = DEBUG # Use allow all only if debug is true if you want, but better to use allowed origins
-# CSRF_TRUSTED_ORIGINS = ["*"]
-# CORS_ALLOW_METHODS = [
-#     "GET",
-#     "POST",
-#     "PUT",
-#     "PATCH",
-#     "DELETE",
-#     "OPTIONS",
-# ]
-# CORS_ALLOW_HEADERS = [
-#     "Authorization",
-#     "Content-Type",
-#     "X-Requested-With",
-#     "Accept",
-#     "Origin",
-#     "User-Agent",
-#     "X-CSRFTOKEN",
-#     "Access-Control-Allow-Origin",
-#     "Access-Control-Allow-Headers",
-# ]
-# CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = True
-
-# drf-spectacular settings
+CSRF_TRUSTED_ORIGINS = ['localhost', 'expensetrackerbackend-production-0360.up.railway.app']
+CORS_ALLOW_METHODS = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+]
+CORS_ALLOW_HEADERS = [
+    "Authorization",
+    "Content-Type",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+    "User-Agent",
+    "X-CSRFTOKEN",
+    "Access-Control-Allow-Origin",
+    "Access-Control-Allow-Headers",
+]
 SPECTACULAR_SETTINGS = {
     'TITLE': 'XPENSE Tracker API',
     'DESCRIPTION': 'API documentation for XPENSE - Personal Finance Tracker',
