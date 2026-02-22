@@ -2,11 +2,19 @@ from rest_framework import viewsets, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.db import transaction
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.core.mail import send_mail, EmailMultiAlternatives
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from .models import Account, Loan, Transaction, Contact, ContactAccount, TransactionSplit
 from .serializers import AccountSerializer, LoanSerializer, TransactionSerializer, UserSerializer, ContactSerializer, ContactAccountSerializer
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+
 
 @extend_schema_view(
     list=extend_schema(description='List all users', tags=['Users']),
@@ -22,7 +30,7 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     def get_permissions(self):
-        if self.action == 'create':
+        if self.action in ['create', 'forgot_password', 'reset_password']:
             return [permissions.AllowAny()]
         return [permissions.IsAuthenticated()]
 
@@ -57,6 +65,106 @@ class UserViewSet(viewsets.ModelViewSet):
     def me(self, request):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def forgot_password(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response(
+                {"detail": "Email is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            # Handle multiple users with same email by taking the first one
+            user = User.objects.filter(email=email).first()
+            if not user:
+                return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+                
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+            reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+
+            subject = "Reset Your XPENSE Password"
+            text_content = f"Click the link below to reset your password:\n\n{reset_url}"
+            html_content = f"""
+                                <p>Hello,</p>
+                                <p>Click the button below to reset your password:</p>
+                                <p>
+                                    <a href="{reset_url}" style="padding:10px 15px;background:#4f46e5;color:white;text-decoration:none;border-radius:5px;">
+                                        Reset Password
+                                    </a>
+                                </p>
+                                <p>If you didn’t request this, you can ignore this email.</p>
+                            """
+            
+            email_message = EmailMultiAlternatives(
+                subject,
+                text_content,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+            )
+            email_message.attach_alternative(html_content, "text/html")
+            email_message.send(fail_silently=False)
+            print("EMAIL SENT")
+
+            return Response({"detail": "Password reset link sent to your email."})
+            
+            # send_mail(
+            #     subject,
+            #     text_content,
+            #     html_content,
+            #     getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@xpense.com'),
+            #     [email],
+            #     fail_silently=False,
+            # )
+            # return Response({'detail': 'Password reset link sent to your email.'})
+        except Exception as e:
+            # Log the error in production
+            print(e)
+            return Response({'detail': 'An error occurred. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def reset_password(self, request):
+        uidb64 = request.data.get('uid')
+        token = request.data.get('token')
+        new_password = request.data.get('new_password')
+
+        if not all([uidb64, token, new_password]):
+            return Response(
+                {"detail": "Invalid request."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response(
+                {"detail": "Invalid or expired reset link."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not default_token_generator.check_token(user, token):
+            return Response(
+                {"detail": "Invalid or expired reset link."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate password strength
+        try:
+            validate_password(new_password, user)
+        except ValidationError as e:
+            return Response(
+                {"detail": e.messages},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user.set_password(new_password)
+        user.save()
+
+        return Response({"detail": "Password has been reset successfully."})
 
 @extend_schema_view(
     list=extend_schema(description='List all accounts for the authenticated user', tags=['Accounts']),
