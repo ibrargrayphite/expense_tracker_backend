@@ -14,6 +14,9 @@ from .serializers import AccountSerializer, LoanSerializer, TransactionSerialize
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.conf import settings
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Email, To, Content
 
 
 @extend_schema_view(
@@ -99,15 +102,14 @@ class UserViewSet(viewsets.ModelViewSet):
                                 <p>If you didn’t request this, you can ignore this email.</p>
                             """
             
-            email_message = EmailMultiAlternatives(
-                subject,
-                text_content,
-                settings.DEFAULT_FROM_EMAIL,
-                [email],
+            email_message = Mail(
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to_emails=email,
+                subject=subject,
+                html_content=html_content
             )
-            email_message.attach_alternative(html_content, "text/html")
-            email_message.send(fail_silently=False)
-            print("EMAIL SENT")
+            sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
+            sg.client.mail.send.post(request_body=email_message.get())
 
             return Response({"detail": "Password reset link sent to your email."})
             
