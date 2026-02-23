@@ -28,11 +28,17 @@ class TransactionSplitSerializer(serializers.ModelSerializer):
 
 class TransactionSerializer(serializers.ModelSerializer):
     splits = TransactionSplitSerializer(many=True, read_only=True)
+    contact_name = serializers.SerializerMethodField()
     
     class Meta:
         model = Transaction
         fields = '__all__'
         read_only_fields = ('user',)
+
+    def get_contact_name(self, obj):
+        if obj.contact:
+            return f"{obj.contact.first_name} {obj.contact.last_name}"
+        return None
 
     def create(self, validated_data):
         return super().create(validated_data)

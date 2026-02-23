@@ -237,7 +237,45 @@ class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
 
     def get_queryset(self):
-        return Transaction.objects.filter(user=self.request.user)
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        queryset = Transaction.objects.filter(user=self.request.user)
+        
+        # Default to past 7 days unless specified otherwise (e.g., for CSV export)
+        if self.action == 'list' and not self.request.query_params.get('all'):
+            seven_days_ago = timezone.now() - timedelta(days=7)
+            queryset = queryset.filter(date__gte=seven_days_ago)
+            
+        return queryset.order_by('-date')
+
+    @action(detail=False, methods=['get'])
+    def download_csv(self, request):
+        import csv
+        from django.http import HttpResponse
+        
+        # Get all transactions for CSV export (ignoring the 7 day limit)
+        transactions = Transaction.objects.filter(user=request.user).order_by('-date')
+        
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="transactions_export.csv"'
+        
+        writer = csv.writer(response)
+        writer.writerow(['Date', 'Type', 'Amount', 'Account', 'Contact', 'Note'])
+        
+        for t in transactions:
+            contact_name = f"{t.contact.first_name} {t.contact.last_name}" if t.contact else "-"
+            account_name = t.account.bank_name if t.account else "-"
+            writer.writerow([
+                t.date.strftime('%Y-%m-%d %H:%M:%S') if t.date else "-",
+                t.type,
+                t.amount,
+                account_name,
+                contact_name,
+                t.note or ""
+            ])
+            
+        return response
 
     @transaction.atomic
     def perform_create(self, serializer):
