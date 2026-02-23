@@ -101,6 +101,9 @@ class TransactionSplit(models.Model):
     transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='splits')
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='splits')
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    type = models.CharField(max_length=20, choices=Transaction.TRANSACTION_TYPES, default='EXPENSE')
+    contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='splits')
+    loan = models.ForeignKey(Loan, on_delete=models.SET_NULL, null=True, blank=True, related_name='splits')
 
     def __str__(self):
-        return f"{self.transaction.type} Split: {self.account.bank_name} - {self.amount}"
+        return f"{self.type} Split: {self.account.bank_name} - {self.amount}"

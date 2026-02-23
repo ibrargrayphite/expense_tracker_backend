@@ -146,6 +146,7 @@ if ENVIRONMENT == 'production':
         'API_SECRET': config('CLOUDINARY_API_SECRET'),
     }
 
+    # Storage settings for Django 5.x
     STORAGES = {
         "default": {
             "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
@@ -154,6 +155,10 @@ if ENVIRONMENT == 'production':
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
+
+    # Legacy storage settings for compatibility with django-cloudinary-storage and other tools
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
     MEDIA_URL = '/media/'
 else:
@@ -166,6 +171,11 @@ else:
             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
+    
+    # Legacy storage settings for development
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+    
     MEDIA_URL = '/media/'
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

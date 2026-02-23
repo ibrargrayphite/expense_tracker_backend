@@ -314,20 +314,30 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 if t.to_account:
                     to_acc_str = format_account(t.to_account)
                 elif t.to_contact_account:
-                    if t.to_contact_account.account_number:
-                        to_acc_str = f"{t.to_contact_account.account_name} - {t.to_contact_account.account_number} - {contact_name}"
-                    else:
-                        to_acc_str = f"{t.to_contact_account.account_name} - {contact_name}"
+                    to_acc_str = f"{t.to_contact_account.account_name} - {t.to_contact_account.account_number} - {contact_name}"
             elif t.splits.exists():
-                split_accs = ", ".join([f"{format_account(s.account)} (Rs. {s.amount})" for s in t.splits.all()])
-                if t.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-                    # Money landed in multiple accounts
-                    to_acc_str = split_accs
-                    from_acc_str = contact_name
-                else:
-                    # Money spent from multiple accounts
-                    from_acc_str = split_accs
-                    to_acc_str = contact_name
+                from_parts = []
+                to_parts = []
+                type_parts = []
+                
+                for s in t.splits.all():
+                    s_contact = f"{s.contact.first_name} {s.contact.last_name}" if s.contact else contact_name
+                    s_acc = format_account(s.account)
+                    type_display = s.get_type_display()
+                    
+                    if s.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                        from_parts.append(f"{s_contact} (Rs. {s.amount})")
+                        to_parts.append(f"{s_acc} (Rs. {s.amount})")
+                    else:
+                        from_parts.append(f"{s_acc} (Rs. {s.amount})")
+                        to_parts.append(f"{s_contact} (Rs. {s.amount})")
+                    
+                    if type_display not in type_parts:
+                        type_parts.append(type_display)
+                
+                from_acc_str = " | ".join(from_parts)
+                to_acc_str = " | ".join(to_parts)
+                current_type_display = "Split: " + ", ".join(type_parts)
             elif t.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
                 to_acc_str = format_account(t.account)
                 from_acc_str = contact_name
@@ -338,9 +348,12 @@ class TransactionViewSet(viewsets.ModelViewSet):
             # Format date
             date_str = t.date.strftime('%Y-%m-%d %H:%M:%S') if t.date else "-"
             
+            # Use split-specific type display if it exists, otherwise use primary type
+            final_type_display = current_type_display if t.splits.exists() else t.get_type_display()
+
             ws.append([
                 date_str,
-                t.get_type_display(),
+                final_type_display,
                 float(t.amount),
                 from_acc_str,
                 to_acc_str,
@@ -389,42 +402,79 @@ class TransactionViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_create(self, serializer):
         import json
+        from decimal import Decimal
+        from django.db.models import F
+        
         instance = serializer.save(user=self.request.user)
         
-        # 1. Handle Automatic Loan Creation (if applicable)
-        if instance.type in ['LOAN_TAKEN', 'MONEY_LENT'] and instance.contact and not instance.loan:
-            loan_type = 'TAKEN' if instance.type == 'LOAN_TAKEN' else 'LENT'
-            new_loan = Loan.objects.create(
-                user=instance.user,
-                contact=instance.contact,
-                type=loan_type,
-                total_amount=0, 
-                remaining_amount=0,
-                description=instance.note
-            )
-            instance.loan = new_loan
-            instance.save()
+        def handle_loan_update(item, tx_type, amount):
+            """Helper to update loan totals based on activity type."""
+            loan = item.loan
+            # If no loan but type is loan addition, create new loan if contact exists
+            if not loan and tx_type in ['LOAN_TAKEN', 'MONEY_LENT'] and item.contact:
+                loan_type = 'TAKEN' if tx_type == 'LOAN_TAKEN' else 'LENT'
+                loan = Loan.objects.create(
+                    user=self.request.user,
+                    contact=item.contact,
+                    type=loan_type,
+                    total_amount=0,
+                    remaining_amount=0,
+                    description=instance.note
+                )
+                item.loan = loan
+                item.save()
 
-        # 2. Update Account Balances
-        from django.db.models import F
+            if loan:
+                if tx_type == 'REPAYMENT':
+                    loan.remaining_amount -= amount
+                elif tx_type == 'REIMBURSEMENT':
+                    loan.remaining_amount -= amount
+                elif tx_type == 'LOAN_TAKEN':
+                    loan.remaining_amount += amount
+                    loan.total_amount += amount
+                elif tx_type == 'MONEY_LENT':
+                    loan.remaining_amount += amount
+                    loan.total_amount += amount
+                
+                loan.is_closed = loan.remaining_amount <= 0
+                loan.save()
+
+        # 1. Handle Splits (Multi-type support)
         splits_data = self.request.data.get('splits')
         if splits_data:
-            import json
-            from decimal import Decimal
-            splits = json.loads(splits_data)
-            for split in splits:
-                acc_id = split['account']
-                amt = Decimal(split['amount'])
-                TransactionSplit.objects.create(transaction=instance, account_id=acc_id, amount=amt)
+            if isinstance(splits_data, str):
+                splits = json.loads(splits_data)
+            else:
+                splits = splits_data
+                
+            for split_item in splits:
+                acc_id = split_item['account']
+                amt = Decimal(str(split_item['amount']))
+                stype = split_item.get('type', instance.type)
+                contact_id = split_item.get('contact')
+                loan_id = split_item.get('loan')
+                
+                split_obj = TransactionSplit.objects.create(
+                    transaction=instance, 
+                    account_id=acc_id, 
+                    amount=amt,
+                    type=stype,
+                    contact_id=contact_id,
+                    loan_id=loan_id
+                )
+                
+                # Update loan for split
+                handle_loan_update(split_obj, stype, amt)
                 
                 # Update balance using F expression
                 acc = Account.objects.filter(id=acc_id, user=self.request.user)
-                if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                if stype in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
                     acc.update(balance=F('balance') + amt)
                 else:
                     acc.update(balance=F('balance') - amt)
+                    
         elif instance.type == 'TRANSFER':
-            # Handle Transfer logic
+            # Handle Transfer logic (stays simple for now)
             if instance.account:
                 Account.objects.filter(id=instance.account.id).update(balance=F('balance') - instance.amount)
             
@@ -432,68 +482,64 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 Account.objects.filter(id=instance.to_account.id).update(balance=F('balance') + instance.amount)
         elif instance.account:
             # Simple transaction (one account)
+            handle_loan_update(instance, instance.type, instance.amount)
+            
             acc = Account.objects.filter(id=instance.account.id)
             if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
                 acc.update(balance=F('balance') + instance.amount)
             else:
                 acc.update(balance=F('balance') - instance.amount)
 
-        # 3. Update Loan Totals
-        loan = instance.loan
-        if loan:
-            if instance.type == 'REPAYMENT':
-                loan.remaining_amount -= instance.amount
-            elif instance.type == 'REIMBURSEMENT':
-                loan.remaining_amount -= instance.amount
-            elif instance.type == 'LOAN_TAKEN':
-                loan.remaining_amount += instance.amount
-                loan.total_amount += instance.amount
-            elif instance.type == 'MONEY_LENT':
-                loan.remaining_amount += instance.amount
-                loan.total_amount += instance.amount
-            
-            loan.is_closed = loan.remaining_amount <= 0
-            loan.save()
-
     @transaction.atomic
     def perform_destroy(self, instance):
         from django.db.models import F
-        # Reverse balance updates for all accounts involved
+        
+        def reverse_loan_update(item, tx_type, amount):
+            loan = item.loan
+            if loan:
+                if tx_type == 'REPAYMENT':
+                    loan.remaining_amount += amount
+                elif tx_type == 'REIMBURSEMENT':
+                    loan.remaining_amount += amount
+                elif tx_type == 'LOAN_TAKEN':
+                    loan.remaining_amount -= amount
+                    loan.total_amount -= amount
+                elif tx_type == 'MONEY_LENT':
+                    loan.remaining_amount -= amount
+                    loan.total_amount -= amount
+                
+                loan.is_closed = loan.remaining_amount <= 0
+                loan.save()
+
+        # Reverse balance and loan updates for all accounts involved
         splits = instance.splits.all()
         if splits.exists():
             for split in splits:
                 acc = Account.objects.filter(id=split.account.id)
-                if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-                    acc.update(balance=F('balance') - split.amount)
+                stype = split.type
+                amt = split.amount
+                
+                # Reverse loan
+                reverse_loan_update(split, stype, amt)
+                
+                # Reverse balance
+                if stype in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                    acc.update(balance=F('balance') - amt)
                 else:
-                    acc.update(balance=F('balance') + split.amount)
+                    acc.update(balance=F('balance') + amt)
         elif instance.type == 'TRANSFER':
             if instance.account:
                 Account.objects.filter(id=instance.account.id).update(balance=F('balance') + instance.amount)
             if instance.to_account:
                 Account.objects.filter(id=instance.to_account.id).update(balance=F('balance') - instance.amount)
         elif instance.account:
+            # Reverse loan
+            reverse_loan_update(instance, instance.type, instance.amount)
+            
             acc = Account.objects.filter(id=instance.account.id)
             if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
                 acc.update(balance=F('balance') - instance.amount)
             else:
                 acc.update(balance=F('balance') + instance.amount)
-
-        # Reverse loan update
-        loan = instance.loan
-        if loan:
-            if instance.type == 'REPAYMENT':
-                loan.remaining_amount += instance.amount
-            elif instance.type == 'REIMBURSEMENT':
-                loan.remaining_amount += instance.amount
-            elif instance.type == 'LOAN_TAKEN':
-                loan.remaining_amount -= instance.amount
-                loan.total_amount -= instance.amount
-            elif instance.type == 'MONEY_LENT':
-                loan.remaining_amount -= instance.amount
-                loan.total_amount -= instance.amount
-            
-            loan.is_closed = loan.remaining_amount <= 0
-            loan.save()
         
         instance.delete()

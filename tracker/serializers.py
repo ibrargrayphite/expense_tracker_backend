@@ -24,7 +24,7 @@ class TransactionSplitSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = TransactionSplit
-        fields = ['id', 'account', 'account_name', 'amount']
+        fields = ('id', 'account', 'account_name', 'amount', 'type', 'contact', 'loan')
 
 class TransactionSerializer(serializers.ModelSerializer):
     splits = TransactionSplitSerializer(many=True, read_only=True)
