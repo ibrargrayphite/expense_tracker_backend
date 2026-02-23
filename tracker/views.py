@@ -250,31 +250,93 @@ class TransactionViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-date')
 
     @action(detail=False, methods=['get'])
-    def download_csv(self, request):
-        import csv
+    def download_excel(self, request):
+        import openpyxl
+        from openpyxl.drawing.image import Image as OpenpyxlImage
         from django.http import HttpResponse
+        from io import BytesIO
+        from PIL import Image as PILImage
+        import os
+        from django.conf import settings
         
-        # Get all transactions for CSV export (ignoring the 7 day limit)
+        # Get all transactions for export
         transactions = Transaction.objects.filter(user=request.user).order_by('-date')
         
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="transactions_export.csv"'
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Transactions"
         
-        writer = csv.writer(response)
-        writer.writerow(['Date', 'Type', 'Amount', 'Account', 'Contact', 'Note'])
+        # Set headers
+        headers = ['Date', 'Type', 'Amount', 'Primary Account', 'Split/Destination Accounts', 'Contact', 'Note', 'Image']
+        ws.append(headers)
         
-        for t in transactions:
+        # Style headers
+        for cell in ws[1]:
+            cell.font = openpyxl.styles.Font(bold=True)
+            cell.fill = openpyxl.styles.PatternFill(start_color="F0F0F0", end_color="F0F0F0", fill_type="solid")
+        
+        # Column widths
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 12
+        ws.column_dimensions['D'].width = 20
+        ws.column_dimensions['E'].width = 30
+        ws.column_dimensions['F'].width = 20
+        ws.column_dimensions['G'].width = 40
+        ws.column_dimensions['H'].width = 25
+        
+        for idx, t in enumerate(transactions, start=2):
             contact_name = f"{t.contact.first_name} {t.contact.last_name}" if t.contact else "-"
             account_name = t.account.bank_name if t.account else "-"
-            writer.writerow([
-                t.date.strftime('%Y-%m-%d %H:%M:%S') if t.date else "-",
+            
+            # Use splits as 'Destination Accounts' if they exist
+            split_accs = ", ".join([f"{s.account.bank_name} (Rs. {s.amount})" for s in t.splits.all()]) if t.splits.exists() else "-"
+            
+            # Format date
+            date_str = t.date.strftime('%Y-%m-%d %H:%M:%S') if t.date else "-"
+            
+            ws.append([
+                date_str,
                 t.type,
-                t.amount,
+                float(t.amount),
                 account_name,
+                split_accs,
                 contact_name,
-                t.note or ""
+                t.note or "",
+                ""  # Image column placeholder
             ])
             
+            # Add image if it exists
+            if t.image:
+                try:
+                    img_path = t.image.path
+                    if os.path.exists(img_path):
+                        # Open and resize
+                        pil_img = PILImage.open(img_path)
+                        # Resize maintaining aspect ratio
+                        pil_img.thumbnail((150, 150))
+                        
+                        img_io = BytesIO()
+                        pil_img.save(img_io, format='PNG')
+                        img_io.seek(0)
+                        
+                        xl_img = OpenpyxlImage(img_io)
+                        # Center the image in the cell loosely
+                        ws.add_image(xl_img, f'H{idx}')
+                        # Adjust row height to fit image
+                        ws.row_dimensions[idx].height = 120
+                except Exception as e:
+                    ws[f'H{idx}'] = f"Error: {str(e)}"
+
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        response = HttpResponse(
+            output.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="transactions_export.xlsx"'
         return response
 
     @transaction.atomic
