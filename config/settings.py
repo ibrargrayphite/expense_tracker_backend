@@ -161,7 +161,7 @@ if ENVIRONMENT == 'production':
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
     
     # Relax whitenoise strictness to allow build even if some referenced files (like fonts) are missing
-    # WHITENOISE_MANIFEST_STRICT = False
+    WHITENOISE_MANIFEST_STRICT = False
 
     MEDIA_URL = '/media/'
 else:
