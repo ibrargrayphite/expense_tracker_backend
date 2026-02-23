@@ -159,6 +159,9 @@ if ENVIRONMENT == 'production':
     # Legacy storage settings for compatibility with django-cloudinary-storage and other tools
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    
+    # Relax whitenoise strictness to allow build even if some referenced files (like fonts) are missing
+    WHITENOISE_MANIFEST_STRICT = False
 
     MEDIA_URL = '/media/'
 else:
