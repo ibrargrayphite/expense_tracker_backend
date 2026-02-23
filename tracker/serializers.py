@@ -40,6 +40,26 @@ class TransactionSerializer(serializers.ModelSerializer):
             return f"{obj.contact.first_name} {obj.contact.last_name}"
         return None
 
+    def validate(self, data):
+        tx_type = data.get('type')
+        amount = data.get('amount')
+        account = data.get('account')
+        to_account = data.get('to_account')
+
+        # 1. Transfer Validation: From and To accounts must be different
+        if tx_type == 'TRANSFER':
+            if not to_account and not data.get('to_contact_account'):
+                raise serializers.ValidationError("A transfer must have a destination account or contact account.")
+            if to_account and account == to_account:
+                raise serializers.ValidationError("From and To accounts cannot be the same.")
+
+        # 2. Balance Validation: Check if source account has sufficient funds
+        if tx_type in ['EXPENSE', 'REPAYMENT', 'MONEY_LENT', 'TRANSFER'] and account:
+            if amount > account.balance:
+                raise serializers.ValidationError(f"Insufficient balance in {account.bank_name}. Current balance: {account.balance}")
+
+        return data
+
     def create(self, validated_data):
         return super().create(validated_data)
 

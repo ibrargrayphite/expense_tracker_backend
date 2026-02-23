@@ -242,8 +242,18 @@ class TransactionViewSet(viewsets.ModelViewSet):
         
         queryset = Transaction.objects.filter(user=self.request.user)
         
-        # Default to past 7 days unless specified otherwise (e.g., for CSV export)
-        if self.action == 'list' and not self.request.query_params.get('all'):
+        # Check for date filters
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            # Add time to end_date to include the whole day
+            queryset = queryset.filter(date__lte=f"{end_date} 23:59:59")
+            
+        # Default to past 7 days only if it's list action and NO date filters provided
+        if self.action == 'list' and not self.request.query_params.get('all') and not (start_date or end_date):
             seven_days_ago = timezone.now() - timedelta(days=7)
             queryset = queryset.filter(date__gte=seven_days_ago)
             
@@ -259,15 +269,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
         import os
         from django.conf import settings
         
-        # Get all transactions for export
-        transactions = Transaction.objects.filter(user=request.user).order_by('-date')
+        # Get all transactions for export (respect date filters if any)
+        transactions = self.get_queryset()
         
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Transactions"
         
-        # Set headers
-        headers = ['Date', 'Type', 'Amount', 'Primary Account', 'Split/Destination Accounts', 'Contact', 'Note', 'Image']
+        # Set headers per user request
+        headers = ['Date', 'Type', 'Amount', 'From Account', 'To Account', 'Contact', 'Note', 'Image']
         ws.append(headers)
         
         # Style headers
@@ -279,31 +289,64 @@ class TransactionViewSet(viewsets.ModelViewSet):
         ws.column_dimensions['A'].width = 20
         ws.column_dimensions['B'].width = 15
         ws.column_dimensions['C'].width = 12
-        ws.column_dimensions['D'].width = 20
-        ws.column_dimensions['E'].width = 30
+        ws.column_dimensions['D'].width = 40
+        ws.column_dimensions['E'].width = 40
         ws.column_dimensions['F'].width = 20
         ws.column_dimensions['G'].width = 40
         ws.column_dimensions['H'].width = 25
         
         for idx, t in enumerate(transactions, start=2):
             contact_name = f"{t.contact.first_name} {t.contact.last_name}" if t.contact else "-"
-            account_name = t.account.bank_name if t.account else "-"
             
-            # Use splits as 'Destination Accounts' if they exist
-            split_accs = ", ".join([f"{s.account.bank_name} (Rs. {s.amount})" for s in t.splits.all()]) if t.splits.exists() else "-"
+            # Format: Bank Name - Account Number - Account Owner
+            def format_account(acc):
+                if not acc: return "-"
+                if acc.account_number:
+                    return f"{acc.bank_name} - {acc.account_number} - {acc.account_name}"
+                else:
+                    return f"{acc.bank_name} - {acc.account_name}"
+
+            from_acc_str = "-"
+            to_acc_str = "-"
+            
+            if t.type == 'TRANSFER':
+                from_acc_str = format_account(t.account)
+                if t.to_account:
+                    to_acc_str = format_account(t.to_account)
+                elif t.to_contact_account:
+                    if t.to_contact_account.account_number:
+                        to_acc_str = f"{t.to_contact_account.account_name} - {t.to_contact_account.account_number} - {contact_name}"
+                    else:
+                        to_acc_str = f"{t.to_contact_account.account_name} - {contact_name}"
+            elif t.splits.exists():
+                split_accs = ", ".join([f"{format_account(s.account)} (Rs. {s.amount})" for s in t.splits.all()])
+                if t.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                    # Money landed in multiple accounts
+                    to_acc_str = split_accs
+                    from_acc_str = contact_name
+                else:
+                    # Money spent from multiple accounts
+                    from_acc_str = split_accs
+                    to_acc_str = contact_name
+            elif t.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
+                to_acc_str = format_account(t.account)
+                from_acc_str = contact_name
+            else: # EXPENSE, REPAYMENT, MONEY_LENT
+                from_acc_str = format_account(t.account)
+                to_acc_str = contact_name
             
             # Format date
             date_str = t.date.strftime('%Y-%m-%d %H:%M:%S') if t.date else "-"
             
             ws.append([
                 date_str,
-                t.type,
+                t.get_type_display(),
                 float(t.amount),
-                account_name,
-                split_accs,
+                from_acc_str,
+                to_acc_str,
                 contact_name,
-                t.note or "",
-                ""  # Image column placeholder
+                t.note,
+                "" # Image placeholder
             ])
             
             # Add image if it exists
@@ -362,35 +405,38 @@ class TransactionViewSet(viewsets.ModelViewSet):
             instance.loan = new_loan
             instance.save()
 
-        # 2. Handle Account Splits & Balance Updates
+        # 2. Update Account Balances
+        from django.db.models import F
         splits_data = self.request.data.get('splits')
-        if isinstance(splits_data, str):
-            try:
-                splits_data = json.loads(splits_data)
-            except:
-                splits_data = []
-
-        if splits_data and len(splits_data) > 0:
-            for split in splits_data:
-                acc_id = split.get('account')
-                amt = int(split.get('amount'))
-                acc = Account.objects.get(id=acc_id, user=instance.user)
-                TransactionSplit.objects.create(transaction=instance, account=acc, amount=amt)
+        if splits_data:
+            import json
+            from decimal import Decimal
+            splits = json.loads(splits_data)
+            for split in splits:
+                acc_id = split['account']
+                amt = Decimal(split['amount'])
+                TransactionSplit.objects.create(transaction=instance, account_id=acc_id, amount=amt)
                 
-                # Update balance for each split account
+                # Update balance using F expression
+                acc = Account.objects.filter(id=acc_id, user=self.request.user)
                 if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-                    acc.balance += amt
+                    acc.update(balance=F('balance') + amt)
                 else:
-                    acc.balance -= amt
-                acc.save()
+                    acc.update(balance=F('balance') - amt)
+        elif instance.type == 'TRANSFER':
+            # Handle Transfer logic
+            if instance.account:
+                Account.objects.filter(id=instance.account.id).update(balance=F('balance') - instance.amount)
+            
+            if instance.to_account:
+                Account.objects.filter(id=instance.to_account.id).update(balance=F('balance') + instance.amount)
         elif instance.account:
             # Simple transaction (one account)
-            account = instance.account
+            acc = Account.objects.filter(id=instance.account.id)
             if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-                account.balance += instance.amount
+                acc.update(balance=F('balance') + instance.amount)
             else:
-                account.balance -= instance.amount
-            account.save()
+                acc.update(balance=F('balance') - instance.amount)
 
         # 3. Update Loan Totals
         loan = instance.loan
@@ -411,23 +457,27 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_destroy(self, instance):
+        from django.db.models import F
         # Reverse balance updates for all accounts involved
         splits = instance.splits.all()
         if splits.exists():
             for split in splits:
-                acc = split.account
+                acc = Account.objects.filter(id=split.account.id)
                 if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-                    acc.balance -= split.amount
+                    acc.update(balance=F('balance') - split.amount)
                 else:
-                    acc.balance += split.amount
-                acc.save()
+                    acc.update(balance=F('balance') + split.amount)
+        elif instance.type == 'TRANSFER':
+            if instance.account:
+                Account.objects.filter(id=instance.account.id).update(balance=F('balance') + instance.amount)
+            if instance.to_account:
+                Account.objects.filter(id=instance.to_account.id).update(balance=F('balance') - instance.amount)
         elif instance.account:
-            account = instance.account
+            acc = Account.objects.filter(id=instance.account.id)
             if instance.type in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-                account.balance -= instance.amount
+                acc.update(balance=F('balance') - instance.amount)
             else:
-                account.balance += instance.amount
-            account.save()
+                acc.update(balance=F('balance') + instance.amount)
 
         # Reverse loan update
         loan = instance.loan
