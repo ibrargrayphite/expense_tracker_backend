@@ -152,16 +152,16 @@ if ENVIRONMENT == 'production':
             "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
         },
         "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
 
     # Legacy storage settings for compatibility with django-cloudinary-storage and other tools
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
     
     # Relax whitenoise strictness to allow build even if some referenced files (like fonts) are missing
-    WHITENOISE_MANIFEST_STRICT = False
+    # WHITENOISE_MANIFEST_STRICT = False
 
     MEDIA_URL = '/media/'
 else:
