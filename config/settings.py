@@ -26,6 +26,7 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'expensetrackerbackend-production-036
 
 INSTALLED_APPS = [
     'unfold',
+    'cloudinary_storage',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -39,7 +40,6 @@ INSTALLED_APPS = [
     'corsheaders',
     'drf_spectacular',
     'cloudinary',
-    'cloudinary_storage',
 
     # Local apps
     'tracker',
@@ -146,14 +146,26 @@ if ENVIRONMENT == 'production':
         'API_SECRET': config('CLOUDINARY_API_SECRET'),
     }
 
-    # Tell Django to use Cloudinary for media files
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    STORAGES = {
+        "default": {
+            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
-    # Media files
     MEDIA_URL = '/media/'
 else:
     # Use local files in development
-    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
     MEDIA_URL = '/media/'
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

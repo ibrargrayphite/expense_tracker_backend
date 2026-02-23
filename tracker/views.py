@@ -309,22 +309,26 @@ class TransactionViewSet(viewsets.ModelViewSet):
             # Add image if it exists
             if t.image:
                 try:
-                    img_path = t.image.path
-                    if os.path.exists(img_path):
-                        # Open and resize
-                        pil_img = PILImage.open(img_path)
-                        # Resize maintaining aspect ratio
-                        pil_img.thumbnail((150, 150))
-                        
-                        img_io = BytesIO()
-                        pil_img.save(img_io, format='PNG')
-                        img_io.seek(0)
-                        
-                        xl_img = OpenpyxlImage(img_io)
-                        # Center the image in the cell loosely
-                        ws.add_image(xl_img, f'H{idx}')
-                        # Adjust row height to fit image
-                        ws.row_dimensions[idx].height = 120
+                    # Use .open() which works for both local and remote (Cloudinary) storage
+                    img_file = t.image.open()
+                    pil_img = PILImage.open(img_file)
+                    
+                    # Resize maintaining aspect ratio
+                    pil_img.thumbnail((150, 150))
+                    
+                    img_io = BytesIO()
+                    # Ensure compatibility (convert to RGB if RGBA)
+                    if pil_img.mode in ("RGBA", "P"):
+                        pil_img = pil_img.convert("RGB")
+                    pil_img.save(img_io, format='PNG')
+                    img_io.seek(0)
+                    
+                    xl_img = OpenpyxlImage(img_io)
+                    # Center the image in the cell loosely
+                    ws.add_image(xl_img, f'H{idx}')
+                    # Adjust row height to fit image
+                    ws.row_dimensions[idx].height = 120
+                    img_file.close() # Good practice to close
                 except Exception as e:
                     ws[f'H{idx}'] = f"Error: {str(e)}"
 
