@@ -1,6 +1,10 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Account, Loan, Transaction, Contact, ContactAccount, TransactionSplit
+from .models import (
+    Account, Loan, Transaction, Contact, ContactAccount, 
+    TransactionAccount, TransactionSplit, ExpenseCategory, IncomeSource,
+    InternalTransaction
+)
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -19,49 +23,79 @@ class UserSerializer(serializers.ModelSerializer):
         )
         return user
 
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExpenseCategory
+        fields = '__all__'
+        read_only_fields = ('user',)
+
+class IncomeSourceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IncomeSource
+        fields = '__all__'
+        read_only_fields = ('user',)
+
 class TransactionSplitSerializer(serializers.ModelSerializer):
-    account_name = serializers.CharField(source='account.bank_name', read_only=True)
-    
+    loan_details = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = TransactionSplit
-        fields = ('id', 'account', 'account_name', 'amount', 'type', 'contact', 'loan')
+        fields = ('id', 'type', 'amount', 'loan', 'loan_details')
+
+    def get_loan_details(self, obj):
+        if obj.loan:
+            return {
+                "id": obj.loan.id,
+                "type": obj.loan.type,
+                "contact": f"{obj.loan.contact.first_name} {obj.loan.contact.last_name}"
+            }
+        return None
+
+class TransactionAccountSerializer(serializers.ModelSerializer):
+    splits = TransactionSplitSerializer(many=True)
+    account_name = serializers.CharField(source='account.account_name', read_only=True)
+    bank_name = serializers.CharField(source='account.bank_name', read_only=True)
+
+    class Meta:
+        model = TransactionAccount
+        fields = ('id', 'account', 'account_name', 'bank_name', 'splits')
 
 class TransactionSerializer(serializers.ModelSerializer):
-    splits = TransactionSplitSerializer(many=True, read_only=True)
+    accounts = TransactionAccountSerializer(many=True, read_only=True)
     contact_name = serializers.SerializerMethodField()
+    expense_category_name = serializers.CharField(source='expense_category.name', read_only=True)
+    income_source_name = serializers.CharField(source='income_source.name', read_only=True)
+    total_amount = serializers.SerializerMethodField()
     
     class Meta:
         model = Transaction
-        fields = '__all__'
-        read_only_fields = ('user',)
+        fields = (
+            'id', 'user', 'contact', 'contact_name', 'contact_account', 
+            'note', 'date', 'expense_category', 'expense_category_name',
+            'income_source', 'income_source_name', 'image', 'accounts', 
+            'total_amount', 'created_at'
+        )
+        read_only_fields = ('user', 'created_at')
 
     def get_contact_name(self, obj):
         if obj.contact:
             return f"{obj.contact.first_name} {obj.contact.last_name}"
         return None
 
-    def validate(self, data):
-        tx_type = data.get('type')
-        amount = data.get('amount')
-        account = data.get('account')
-        to_account = data.get('to_account')
+    def get_total_amount(self, obj):
+        from django.db.models import Sum
+        # Sum all splits across all accounts for this transaction
+        total = TransactionSplit.objects.filter(transaction_account__transaction=obj).aggregate(Sum('amount'))['amount__sum']
+        return total or 0
 
-        # 1. Transfer Validation: From and To accounts must be different
-        if tx_type == 'TRANSFER':
-            if not to_account and not data.get('to_contact_account'):
-                raise serializers.ValidationError("A transfer must have a destination account or contact account.")
-            if to_account and account == to_account:
-                raise serializers.ValidationError("From and To accounts cannot be the same.")
+class InternalTransactionSerializer(serializers.ModelSerializer):
+    from_account_name = serializers.CharField(source='from_account.account_name', read_only=True)
+    to_account_name = serializers.CharField(source='to_account.account_name', read_only=True)
 
-        # 2. Balance Validation: Check if source account has sufficient funds
-        if tx_type in ['EXPENSE', 'REPAYMENT', 'MONEY_LENT', 'TRANSFER'] and account:
-            if amount > account.balance:
-                raise serializers.ValidationError(f"Insufficient balance in {account.bank_name}. Current balance: {account.balance}")
-
-        return data
-
-    def create(self, validated_data):
-        return super().create(validated_data)
+    class Meta:
+        model = InternalTransaction
+        fields = '__all__'
+        read_only_fields = ('user', 'created_at')
 
 class LoanSerializer(serializers.ModelSerializer):
     contact_name = serializers.SerializerMethodField()
@@ -74,40 +108,37 @@ class LoanSerializer(serializers.ModelSerializer):
     def get_contact_name(self, obj):
         if obj.contact:
             return f"{obj.contact.first_name} {obj.contact.last_name}"
-        return obj.person_name
+        return None
 
 class AccountSerializer(serializers.ModelSerializer):
     transactions = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Account
         fields = '__all__'
         read_only_fields = ('user',)
 
     def get_transactions(self, obj):
-        from .models import Transaction, TransactionSplit
-        from django.db.models import Q
+        # Get splits for this account
+        splits = TransactionSplit.objects.filter(
+            transaction_account__account=obj
+        ).select_related('transaction_account__transaction').order_by('-transaction_account__transaction__date')[:10]
         
-        # Get transactions where this account is either the primary account or part of a split
-        split_transactions = TransactionSplit.objects.filter(account=obj).values_list('transaction_id', flat=True)
-        transactions = Transaction.objects.filter(
-            Q(account=obj) | Q(id__in=split_transactions)
-        ).order_by('-date')[:10] # Limit to 10 most recent
-        
-        return TransactionSerializer(transactions, many=True).data
+        return [{
+            'id': s.transaction_account.transaction.id,
+            'amount': str(s.amount),
+            'type': s.type,
+            'note': s.transaction_account.transaction.note,
+            'date': s.transaction_account.transaction.date,
+        } for s in splits]
 
     def validate(self, data):
         bank_name = data.get('bank_name')
         account_number = data.get('account_number')
         
-        if bank_name != 'Cash' and not account_number:
+        if bank_name != 'CASH' and not account_number:
             raise serializers.ValidationError({"account_number": "Account number is required for bank accounts."})
         
-        # If it's cash, we clear fields that shouldn't be there just in case
-        if bank_name == 'Cash':
-            data['account_number'] = None
-            data['iban'] = None
-            
         return data
 
 class ContactAccountSerializer(serializers.ModelSerializer):
@@ -128,9 +159,8 @@ class ContactSerializer(serializers.ModelSerializer):
         read_only_fields = ('user',)
 
     def get_transactions(self, obj):
-        # Limit to 10 most recent
-        transactions = obj.transactions.all().order_by('-date')[:10]
-        return TransactionSerializer(transactions, many=True).data
+        txs = Transaction.objects.filter(contact=obj).order_by('-date')[:10]
+        return TransactionSerializer(txs, many=True).data
 
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"

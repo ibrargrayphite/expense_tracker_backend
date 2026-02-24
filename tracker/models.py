@@ -193,7 +193,6 @@ class Transaction(models.Model):
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
     contact_account = models.ForeignKey(ContactAccount, on_delete=models.CASCADE, null=True, blank=True, related_name='received_transactions')
     note = models.TextField(blank=True, null=True)
-    category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions')
     date = models.DateTimeField(default=timezone.now)
     expense_category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions')
     income_source = models.ForeignKey(IncomeSource, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions')

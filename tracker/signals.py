@@ -11,11 +11,10 @@ def create_initial_user_data(sender, instance, created, **kwargs):
             user=instance,
             bank_name="CASH",
             account_name="Cash Wallet",
-            account_number="CASH-001",
-            balance=0
+            defaults={"account_number": "CASH-001", "balance": 0}
         )
     
-    DEFAULT_EXPENSE_CATEGORIES = [
+        DEFAULT_EXPENSE_CATEGORIES = [
             "Food",
             "Transportation",
             "Utilities",
@@ -33,5 +32,5 @@ def create_initial_user_data(sender, instance, created, **kwargs):
             "Miscellaneous"
         ]
 
-    for name in DEFAULT_EXPENSE_CATEGORIES:
-        ExpenseCategory.objects.get_or_create(user=instance, name=name)
+        for name in DEFAULT_EXPENSE_CATEGORIES:
+            ExpenseCategory.objects.get_or_create(user=instance, name=name)
