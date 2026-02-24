@@ -136,6 +136,50 @@ class Loan(models.Model):
     def __str__(self):
         return f"{self.type}: {self.contact.first_name} {self.contact.last_name} - {self.total_amount}"
 
+class ExpenseCategory(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='expense_categories')
+    name = models.CharField(max_length=50)
+    description = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "name"]),
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "name"],
+                name="unique_expense_category_per_user"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.name}"
+
+class IncomeSource(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='income_sources')
+    name = models.CharField(max_length=50)
+    description = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "name"]),
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "name"],
+                name="unique_income_source_per_user"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.name}"
+
 class TransactionType(models.TextChoices):
     INCOME = "INCOME", "Income"
     EXPENSE = "EXPENSE", "Expense"
@@ -152,6 +196,8 @@ class Transaction(models.Model):
     loan = models.ForeignKey(Loan, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
     type = models.CharField(max_length=20, choices=TransactionType.choices)
+    expense_category = models.ForeignKey(ExpenseCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
+    income_source = models.ForeignKey(IncomeSource, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
     note = models.TextField(blank=True, null=True)
     image = models.ImageField(upload_to='transactions/', blank=True, null=True)
     date = models.DateTimeField(default=timezone.now)
