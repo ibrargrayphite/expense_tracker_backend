@@ -31,7 +31,15 @@ class TransactionViewSet(mixins.CreateModelMixin,
         instance = serializer.save(user=self.request.user)
         
         # We handle accounts and splits manually from request.data
-        accounts_data = self.request.data.get('accounts', [])
+        import json
+        accounts_raw = self.request.data.get('accounts', [])
+        if isinstance(accounts_raw, str):
+            try:
+                accounts_data = json.loads(accounts_raw)
+            except json.JSONDecodeError:
+                accounts_data = []
+        else:
+            accounts_data = accounts_raw
         
         for acc_data in accounts_data:
             account_id = acc_data.get('account')

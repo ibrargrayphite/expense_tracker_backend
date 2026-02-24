@@ -83,6 +83,10 @@ class InternalTransaction(models.Model):
             models.CheckConstraint(
                 check=~Q(from_account=F("to_account")),
                 name="prevent_self_transfer"
+            ),
+            models.CheckConstraint(
+                check=Q(amount__gte=0),
+                name="amount_positive"
             )
         ]
 
