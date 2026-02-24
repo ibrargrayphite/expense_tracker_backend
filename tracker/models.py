@@ -192,42 +192,36 @@ class Transaction(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
     contact_account = models.ForeignKey(ContactAccount, on_delete=models.CASCADE, null=True, blank=True, related_name='received_transactions')
-    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='transactions')
-    loan = models.ForeignKey(Loan, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
-    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
-    type = models.CharField(max_length=20, choices=TransactionType.choices)
-    expense_category = models.ForeignKey(ExpenseCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
-    income_source = models.ForeignKey(IncomeSource, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
     note = models.TextField(blank=True, null=True)
-    image = models.ImageField(upload_to='transactions/', blank=True, null=True)
+    category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions')
     date = models.DateTimeField(default=timezone.now)
+    expense_category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions')
+    income_source = models.ForeignKey(IncomeSource, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions')
+    image = models.ImageField(upload_to='transactions/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        ordering = ['-date', '-created_at']
         indexes = [
             models.Index(fields=["user", "date"]),
-            models.Index(fields=["account", "date"]),
-            models.Index(fields=["user", "type", "date"]),
             models.Index(fields=["contact"]),
-            models.Index(fields=["loan"]),
-            models.Index(fields=["type"]),
         ]
 
+    def __str__(self):
+        return f"Transaction {self.id} - {self.date.strftime('%Y-%m-%d')}"
 
+class TransactionAccount(models.Model):
+    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='accounts')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='transaction_accounts')
+
+    def __str__(self):
+        return f"{self.transaction} - {self.account}"
+
+class TransactionSplit(models.Model):
+    transaction_account = models.ForeignKey(TransactionAccount, on_delete=models.CASCADE, related_name='splits')
+    type = models.CharField(max_length=20, choices=TransactionType.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
+    loan = models.ForeignKey(Loan, null=True, blank=True, on_delete=models.SET_NULL, related_name='splits')
 
     def __str__(self):
         return f"{self.type} - {self.amount}"
-
-    def clean(self):
-        if self.account.user != self.user:
-            raise ValidationError("Account does not belong to user.")
-
-        if self.contact and self.contact.user != self.user:
-            raise ValidationError("Contact does not belong to user.")
-
-        if self.loan and self.loan.user != self.user:
-            raise ValidationError("Loan does not belong to user.")
-
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)

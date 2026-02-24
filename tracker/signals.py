@@ -4,10 +4,10 @@ from django.contrib.auth.models import User
 from .models import Account, ExpenseCategory
 
 @receiver(post_save, sender=User)
-def create_cash_wallet(sender, instance, created, **kwargs):
+def create_initial_user_data(sender, instance, created, **kwargs):
     if created:
-        # Only create when a new user is created
-        Account.objects.create(
+        # Create default cash wallet
+        Account.objects.get_or_create(
             user=instance,
             bank_name="CASH",
             account_name="Cash Wallet",
@@ -16,22 +16,22 @@ def create_cash_wallet(sender, instance, created, **kwargs):
         )
     
     DEFAULT_EXPENSE_CATEGORIES = [
-        "Food",
-        "Transportation",
-        "Utilities",
-        "Health",
-        "Entertainment",
-        "Education",
-        "Rent / Mortgage",
-        "Shopping",
-        "Travel",
-        "Gifts / Donations",
-        "Subscriptions",
-        "Pet Care",
-        "Personal Care",
-        "Taxes / Fees",
-        "Miscellaneous"
-    ]
+            "Food",
+            "Transportation",
+            "Utilities",
+            "Health",
+            "Entertainment",
+            "Education",
+            "Rent / Mortgage",
+            "Shopping",
+            "Travel",
+            "Gifts / Donations",
+            "Subscriptions",
+            "Pet Care",
+            "Personal Care",
+            "Taxes / Fees",
+            "Miscellaneous"
+        ]
 
     for name in DEFAULT_EXPENSE_CATEGORIES:
-        ExpenseCategory.objects.create(user=user, name=name)
+        ExpenseCategory.objects.get_or_create(user=instance, name=name)
