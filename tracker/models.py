@@ -26,6 +26,10 @@ class Account(models.Model):
             models.UniqueConstraint(
                 fields=["user", "account_number"],
                 name="unique_account_per_user"
+            ),
+            models.CheckConstraint(
+                check=Q(balance__gte=0),
+                name="balance_positive"
             )
         ]
 
@@ -85,8 +89,8 @@ class InternalTransaction(models.Model):
                 name="prevent_self_transfer"
             ),
             models.CheckConstraint(
-                check=Q(amount__gte=0),
-                name="amount_positive"
+                check=Q(amount__gt=0),
+                name="internal_transaction_amount_positive"
             )
         ]
 
@@ -225,6 +229,14 @@ class TransactionSplit(models.Model):
     type = models.CharField(max_length=20, choices=TransactionType.choices)
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
     loan = models.ForeignKey(Loan, null=True, blank=True, on_delete=models.SET_NULL, related_name='splits')
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=Q(amount__gt=0),
+                name="transaction_split_amount_positive"
+            )
+        ]
 
     def __str__(self):
         return f"{self.type} - {self.amount}"
