@@ -1,109 +1,187 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
+from django.core.validators import MinValueValidator
+from decimal import Decimal
+from django.db.models import Q, F
+from django.core.exceptions import ValidationError
 
 class Account(models.Model):
-    BANK_CHOICES = [
-        ('Cash', 'Cash'),
-        ('JazzCash', 'JazzCash'),
-        ('EasyPaisa', 'EasyPaisa'),
-        ('Nayapay', 'Nayapay'),
-        ('SadaPay', 'SadaPay'),
-        ('Bank Alfalah', 'Bank Alfalah'),
-        ('Meezan Bank', 'Meezan Bank'),
-        ('HBL', 'HBL'),
-    ]
-    
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='accounts')
-    bank_name = models.CharField(max_length=50, choices=BANK_CHOICES)
-    account_name = models.CharField(max_length=100, help_text="To distinguish multiple accounts with same bank")
-    account_number = models.CharField(max_length=50, blank=True, null=True)
+    bank_name = models.CharField(max_length=5)
+    account_name = models.CharField(max_length=100)
+    account_number = models.CharField(max_length=50)
     iban = models.CharField(max_length=50, blank=True, null=True)
-    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, validators=[MinValueValidator(Decimal('0.00'))])
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["user"]),
+            models.Index(fields=["bank_name"]),
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "account_number"],
+                name="unique_account_per_user"
+            )
+        ]
+
     def __str__(self):
-        return f"{self.bank_name} - {self.account_name} ({self.user.username})"
+        return f"{self.bank_name} - {self.account_name} - {self.account_number}"
 
 class Contact(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='contacts')
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
-    phone = models.CharField(max_length=20)
+    phone1 = models.CharField(max_length=20)
+    phone2 = models.CharField(max_length=20, blank=True, null=True)
+    email = models.EmailField(max_length=50, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user"]),
+            models.Index(fields=["first_name"]),
+            models.Index(fields=["last_name"]),
+            models.Index(fields=["phone1"]),
+        ]
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
 class ContactAccount(models.Model):
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='accounts')
-    account_name = models.CharField(max_length=100) # e.g. "JazzCash", "Meezan"
+    bank_name = models.CharField(max_length=5)
+    account_name = models.CharField(max_length=100)
     account_number = models.CharField(max_length=50)
+    iban = models.CharField(max_length=50, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.account_name} - {self.account_number}"
+        return f"{self.bank_name} - {self.account_name} - {self.account_number}"
+
+class InternalTransaction(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='internal_transactions')
+    from_account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='outgoing_internal_transactions')
+    to_account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='incoming_internal_transactions')
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
+    note = models.TextField(blank=True, null=True)
+    date = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "date"]),
+            models.Index(fields=["from_account"]),
+            models.Index(fields=["to_account"]),
+        ]
+
+        constraints = [
+            models.CheckConstraint(
+                check=~Q(from_account=F("to_account")),
+                name="prevent_self_transfer"
+            )
+        ]
+
+    def __str__(self):
+        return f"Internal Transaction: {self.from_account.bank_name} - {self.to_account.bank_name} - {self.amount}"
+
+    def clean(self):
+        if self.from_account.user != self.user:
+            raise ValidationError("From account invalid.")
+
+        if self.to_account.user != self.user:
+            raise ValidationError("To account invalid.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+class LoanType(models.TextChoices):
+    TAKEN = "TAKEN", "Loan Taken"
+    LENT = "LENT", "Money Lent"
 
 class Loan(models.Model):
-    LOAN_TYPES = [
-        ('TAKEN', 'Loan Taken'),
-        ('LENT', 'Money Lent'),
-    ]
-    
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='loans')
-    contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='loans')
-    person_name = models.CharField(max_length=100, blank=True, null=True) # Keep for legacy or ad-hoc
-    type = models.CharField(max_length=10, choices=LOAN_TYPES)
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
-    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='loans')
+    type = models.CharField(max_length=10, choices=LoanType.choices)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
+    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.00'))])
     description = models.TextField(blank=True, null=True)
     is_closed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "is_closed"]),
+            models.Index(fields=["contact"]),
+            models.Index(fields=["type"]),
+        ]
+
+        constraints = [
+            models.CheckConstraint(
+                check=Q(remaining_amount__lte=F("total_amount")),
+                name="remaining_not_more_than_total"
+            ),
+            models.CheckConstraint(
+                check=Q(remaining_amount__gte=0),
+                name="remaining_amount_positive"
+            )
+        ]
+
     def __str__(self):
-        return f"{self.type}: {self.person_name} - {self.total_amount}"
+        return f"{self.type}: {self.contact.first_name} {self.contact.last_name} - {self.total_amount}"
+
+class TransactionType(models.TextChoices):
+    INCOME = "INCOME", "Income"
+    EXPENSE = "EXPENSE", "Expense"
+    LOAN_TAKEN = "LOAN_TAKEN", "Loan Taken"
+    MONEY_LENT = "MONEY_LENT", "Money Lent"
+    LOAN_REPAYMENT = "LOAN_REPAYMENT", "Loan Repayment"
+    REIMBURSEMENT = "REIMBURSEMENT", "Reimbursement"
 
 class Transaction(models.Model):
-    TRANSACTION_TYPES = [
-        ('INCOME', 'Income'),
-        ('EXPENSE', 'Expense'),
-        ('LOAN_TAKEN', 'Loan Taken'),
-        ('MONEY_LENT', 'Money Lent'),
-        ('REPAYMENT', 'Repayment (Paying back loan taken)'),
-        ('REIMBURSEMENT', 'Reimbursement (Getting back money lent)'),
-        ('TRANSFER', 'Transfer'),
-    ]
-    
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
-    account = models.ForeignKey(Account, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
-    to_account = models.ForeignKey(Account, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_transfers')
-    contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
-    to_contact_account = models.ForeignKey(ContactAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_transactions')
-    loan = models.ForeignKey(Loan, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
+    contact = models.ForeignKey(Contact, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
+    contact_account = models.ForeignKey(ContactAccount, on_delete=models.CASCADE, null=True, blank=True, related_name='received_transactions')
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='transactions')
+    loan = models.ForeignKey(Loan, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
+    type = models.CharField(max_length=20, choices=TransactionType.choices)
     note = models.TextField(blank=True, null=True)
     image = models.ImageField(upload_to='transactions/', blank=True, null=True)
-    date = models.DateTimeField(default=None, null=True, blank=True)
+    date = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def save(self, *args, **kwargs):
-        if not self.date:
-            from django.utils import timezone
-            self.date = timezone.now()
-        super().save(*args, **kwargs)
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "date"]),
+            models.Index(fields=["account", "date"]),
+            models.Index(fields=["user", "type", "date"]),
+            models.Index(fields=["contact"]),
+            models.Index(fields=["loan"]),
+            models.Index(fields=["type"]),
+        ]
+
+
 
     def __str__(self):
         return f"{self.type} - {self.amount}"
 
-class TransactionSplit(models.Model):
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='splits')
-    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='splits')
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
-    type = models.CharField(max_length=20, choices=Transaction.TRANSACTION_TYPES, default='EXPENSE')
-    contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='splits')
-    loan = models.ForeignKey(Loan, on_delete=models.SET_NULL, null=True, blank=True, related_name='splits')
+    def clean(self):
+        if self.account.user != self.user:
+            raise ValidationError("Account does not belong to user.")
 
-    def __str__(self):
-        return f"{self.type} Split: {self.account.bank_name} - {self.amount}"
+        if self.contact and self.contact.user != self.user:
+            raise ValidationError("Contact does not belong to user.")
+
+        if self.loan and self.loan.user != self.user:
+            raise ValidationError("Loan does not belong to user.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)

@@ -42,7 +42,7 @@ INSTALLED_APPS = [
     'cloudinary',
 
     # Local apps
-    'tracker',
+    'tracker.apps.TrackerConfig',
 ]
 
 MIDDLEWARE = [
