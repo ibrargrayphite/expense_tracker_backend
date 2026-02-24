@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 
 class Account(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='accounts')
-    bank_name = models.CharField(max_length=5)
+    bank_name = models.CharField(max_length=200)
     account_name = models.CharField(max_length=100)
     account_number = models.CharField(max_length=50)
     iban = models.CharField(max_length=50, blank=True, null=True)
@@ -55,7 +55,7 @@ class Contact(models.Model):
 
 class ContactAccount(models.Model):
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, related_name='accounts')
-    bank_name = models.CharField(max_length=5)
+    bank_name = models.CharField(max_length=200)
     account_name = models.CharField(max_length=100)
     account_number = models.CharField(max_length=50)
     iban = models.CharField(max_length=50, blank=True, null=True)
