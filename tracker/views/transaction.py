@@ -56,6 +56,8 @@ class TransactionViewSet(mixins.CreateModelMixin,
             for split_data in splits_data:
                 stype = split_data.get('type')
                 amount = Decimal(str(split_data.get('amount')))
+                if amount <= 0:
+                    raise ValidationError({'amount': 'Amount must be greater than 0.'})
                 loan_id = split_data.get('loan', None)
                 note = split_data.get('note', None)
                 expense_category_id = split_data.get('expense_category', None)
