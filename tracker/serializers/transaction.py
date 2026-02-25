@@ -15,10 +15,12 @@ class InternalTransactionSerializer(serializers.ModelSerializer):
 
 class TransactionSplitSerializer(serializers.ModelSerializer):
     loan_details = serializers.SerializerMethodField(read_only=True)
+    expense_category_name = serializers.CharField(source='expense_category.name', read_only=True)
+    income_source_name = serializers.CharField(source='income_source.name', read_only=True)
 
     class Meta:
         model = TransactionSplit
-        fields = ('id', 'type', 'amount', 'loan', 'loan_details')
+        fields = ('id', 'type', 'amount', 'loan', 'loan_details', 'expense_category', 'expense_category_name', 'income_source', 'income_source_name', 'note')
 
     def get_loan_details(self, obj):
         if obj.loan:
@@ -49,8 +51,7 @@ class TransactionSerializer(serializers.ModelSerializer):
         model = Transaction
         fields = (
             'id', 'contact', 'contact_name', 'contact_account', 
-            'note', 'date', 'expense_category', 'expense_category_name',
-            'income_source', 'income_source_name', 'image', 'accounts', 
+            'date', 'image', 'accounts', 
             'total_amount', 'created_at'
         )
         read_only_fields = ('user', 'created_at')

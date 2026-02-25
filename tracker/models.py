@@ -200,10 +200,7 @@ class Transaction(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
     contact = models.ForeignKey(Contact, on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
     contact_account = models.ForeignKey(ContactAccount, on_delete=models.CASCADE, null=True, blank=True, related_name='received_transactions')
-    note = models.TextField(blank=True, null=True)
     date = models.DateTimeField(default=timezone.now)
-    expense_category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions')
-    income_source = models.ForeignKey(IncomeSource, null=True, blank=True, on_delete=models.SET_NULL, related_name='transactions')
     image = models.ImageField(upload_to='transactions/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -229,6 +226,9 @@ class TransactionSplit(models.Model):
     type = models.CharField(max_length=20, choices=TransactionType.choices)
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
     loan = models.ForeignKey(Loan, null=True, blank=True, on_delete=models.SET_NULL, related_name='splits')
+    note = models.TextField(blank=True, null=True)
+    expense_category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name='transaction_splits')
+    income_source = models.ForeignKey(IncomeSource, null=True, blank=True, on_delete=models.SET_NULL, related_name='transaction_splits')
 
     class Meta:
         constraints = [

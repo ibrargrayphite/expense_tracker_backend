@@ -1,4 +1,6 @@
 from rest_framework import viewsets, permissions, mixins
+from rest_framework.validators import ValidationError
+from rest_framework import status
 from django.db import transaction
 from tracker.models import InternalTransaction, Transaction, TransactionAccount, TransactionSplit, Loan, Account
 from tracker.serializers.transaction import InternalTransactionSerializer, TransactionSerializer
@@ -55,6 +57,14 @@ class TransactionViewSet(mixins.CreateModelMixin,
                 stype = split_data.get('type')
                 amount = Decimal(str(split_data.get('amount')))
                 loan_id = split_data.get('loan', None)
+                note = split_data.get('note', None)
+                expense_category_id = split_data.get('expense_category', None)
+                income_source_id = split_data.get('income_source', None)
+
+                if stype == 'EXPENSE' and not expense_category_id:
+                    raise ValidationError({'expense_category': 'Expense category is required for expense transactions.'})
+                if stype == 'INCOME' and not income_source_id:
+                    raise ValidationError({'income_source': 'Income source is required for income transactions.'})
                 
                 loan = None
                 if loan_id:
@@ -67,7 +77,7 @@ class TransactionViewSet(mixins.CreateModelMixin,
                         type=loan_type,
                         total_amount=0,
                         remaining_amount=0,
-                        description=instance.note
+                        description=note
                     )
 
                 # Create Split
@@ -75,7 +85,10 @@ class TransactionViewSet(mixins.CreateModelMixin,
                     transaction_account=ta,
                     type=stype,
                     amount=amount,
-                    loan=loan
+                    loan=loan,
+                    note=note,
+                    expense_category_id=expense_category_id,
+                    income_source_id=income_source_id
                 )
                 
                 # Update Loan if applicable
