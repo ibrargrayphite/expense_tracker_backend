@@ -45,6 +45,8 @@ class TransactionViewSet(mixins.CreateModelMixin,
         
         for acc_data in accounts_data:
             account_id = acc_data.get('account')
+            if not account_id:
+                raise ValidationError({'account': 'Account is required.'})
             splits_data = acc_data.get('splits', [])
             
             # Create TransactionAccount
