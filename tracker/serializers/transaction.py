@@ -189,6 +189,9 @@ class TransactionSerializer(serializers.ModelSerializer):
                 stype = split_data.get('type')
                 amount = split_data.get('amount')
                 loan = split_data.get('loan')
+                snote = split_data.get('note')
+                expense_category = split_data.get('expense_category')
+                income_source = split_data.get('income_source')
                 
                 # 3. Create/Manage Loan for TAKEN/LENT if not provided
                 if not loan and stype in ['LOAN_TAKEN', 'MONEY_LENT'] and transaction_instance.contact:
@@ -199,7 +202,7 @@ class TransactionSerializer(serializers.ModelSerializer):
                         type=loan_type,
                         total_amount=0,
                         remaining_amount=0,
-                        description=split_data.get('note')
+                        description=snote
                     )
 
                 # 4. Create TransactionSplit
