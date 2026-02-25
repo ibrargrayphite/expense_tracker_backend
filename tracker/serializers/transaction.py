@@ -19,6 +19,22 @@ class InternalTransactionSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('user', 'created_at')
 
+    def validate(self, attrs):
+        from_account = attrs.get('from_account')
+        to_account = attrs.get('to_account')
+        amount = attrs.get('amount')
+        
+        if from_account == to_account:
+            raise serializers.ValidationError({"accounts": "From account and to account cannot be the same."})
+        
+        if amount <= 0:
+            raise serializers.ValidationError({"accounts": "Amount must be greater than 0."})
+
+        if from_account.balance < amount:
+            raise serializers.ValidationError({"accounts": "From account balance is insufficient."})
+        
+        return attrs
+
 class TransactionSplitSerializer(serializers.ModelSerializer):
     loan_details = serializers.SerializerMethodField(read_only=True)
     expense_category_name = serializers.CharField(source='expense_category.name', read_only=True)
@@ -230,7 +246,7 @@ class TransactionSerializer(serializers.ModelSerializer):
                     )
 
                 # 4. Create TransactionSplit
-                TransactionSplit.objects.create(transaction_account=ta, **split_data, loan=loan)
+                TransactionSplit.objects.create(transaction_account=ta, **split_data)
                 
                 # 5. Update Loan Balances
                 if loan:
