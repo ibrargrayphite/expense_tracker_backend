@@ -97,6 +97,8 @@ class TransactionViewSet(mixins.CreateModelMixin,
                         loan.total_amount += amount
                         loan.remaining_amount += amount
                     elif stype in ['LOAN_REPAYMENT', 'MONEY_LENT']:
+                        if amount > loan.remaining_amount:
+                            raise ValidationError({'amount': 'Amount exceeds remaining amount.'})
                         loan.remaining_amount -= amount
                     
                     loan.is_closed = loan.remaining_amount == 0
@@ -109,6 +111,8 @@ class TransactionViewSet(mixins.CreateModelMixin,
                 if stype in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
                     acc.update(balance=F('balance') + amount)
                 else:
+                    if amount > acc.first().balance:
+                        raise ValidationError({'amount': 'Insufficient balance.'})
                     acc.update(balance=F('balance') - amount)
 
 

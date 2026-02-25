@@ -52,7 +52,7 @@ class TransactionSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'contact', 'contact_name', 'contact_account', 
             'date', 'image', 'accounts', 
-            'total_amount', 'created_at'
+            'total_amount', 'created_at', 'expense_category_name', 'income_source_name'
         )
         read_only_fields = ('user', 'created_at')
 
