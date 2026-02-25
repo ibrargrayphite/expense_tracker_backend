@@ -67,14 +67,18 @@ class TransactionAccountSerializer(serializers.ModelSerializer):
 class TransactionSerializer(serializers.ModelSerializer):
     accounts = TransactionAccountSerializer(many=True)
     contact_name = serializers.SerializerMethodField(read_only=True)
+    expense_category_name = serializers.SerializerMethodField(read_only=True)
+    income_source_name = serializers.SerializerMethodField(read_only=True)
+    note = serializers.SerializerMethodField(read_only=True)
     total_amount = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Transaction
         fields = (
             'id', 'contact', 'contact_name', 'contact_account', 
-            'date', 'image', 'accounts', 
-            'total_amount', 'created_at'
+            'date', 'image', 'accounts', 'total_amount', 
+            'expense_category_name', 'income_source_name', 'note',
+            'created_at'
         )
         read_only_fields = ('user', 'created_at')
 
@@ -95,6 +99,26 @@ class TransactionSerializer(serializers.ModelSerializer):
             transaction_account__transaction=obj
         ).aggregate(Sum('amount'))['amount__sum']
         return total or 0
+
+    def get_expense_category_name(self, obj):
+        first_split = TransactionSplit.objects.filter(
+            transaction_account__transaction=obj,
+            expense_category__isnull=False
+        ).select_related('expense_category').first()
+        return first_split.expense_category.name if first_split else None
+
+    def get_income_source_name(self, obj):
+        first_split = TransactionSplit.objects.filter(
+            transaction_account__transaction=obj,
+            income_source__isnull=False
+        ).select_related('income_source').first()
+        return first_split.income_source.name if first_split else None
+
+    def get_note(self, obj):
+        first_split = TransactionSplit.objects.filter(
+            transaction_account__transaction=obj
+        ).first()
+        return first_split.note if first_split else None
 
     def validate(self, attrs):
         """
