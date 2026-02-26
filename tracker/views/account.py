@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions
+from rest_framework.exceptions import ValidationError
 from tracker.models import Account
 from tracker.serializers.account import AccountSerializer
 
@@ -21,3 +22,14 @@ class AccountViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        if instance.bank_name.upper() == 'CASH':
+            raise ValidationError({"detail": "The system 'CASH' account cannot be modified."})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.bank_name.upper() == 'CASH':
+            raise ValidationError({"detail": "The system 'CASH' account cannot be deleted."})
+        instance.delete()

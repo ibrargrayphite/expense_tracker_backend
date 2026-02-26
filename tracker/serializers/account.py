@@ -9,11 +9,13 @@ class AccountSerializer(serializers.ModelSerializer):
             'id', 'bank_name', 'account_name', 'account_number',
             'iban', 'balance', 'created_at', 'updated_at',
         )
-        read_only_fields = ('user', 'created_at', 'updated_at')
+        read_only_fields = ('user', 'balance', 'created_at', 'updated_at')
 
     def validate_bank_name(self, value):
         if not value.strip():
             raise serializers.ValidationError("Bank name cannot be empty.")
+        if value.strip().upper() == 'CASH':
+            raise serializers.ValidationError("The 'CASH' bank name is reserved for the system Cash Wallet.")
         return value.strip()
 
     def validate_account_name(self, value):
