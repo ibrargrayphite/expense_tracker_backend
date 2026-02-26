@@ -32,13 +32,9 @@ class LoanSerializer(serializers.ModelSerializer):
 
         if total_amount is not None and remaining_amount is not None:
             if remaining_amount > total_amount:
-                raise serializers.ValidationError({
-                    "remaining_amount": "Remaining amount cannot be greater than the total loan amount."
-                })
+                raise serializers.ValidationError("Remaining amount cannot be greater than the total loan amount.")
             
         if remaining_amount is not None and remaining_amount < 0:
-            raise serializers.ValidationError({
-                "remaining_amount": "Remaining amount cannot be negative."
-            })
+            raise serializers.ValidationError("Remaining amount cannot be negative.")
 
         return data

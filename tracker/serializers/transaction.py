@@ -31,13 +31,13 @@ class InternalTransactionSerializer(serializers.ModelSerializer):
         amount = attrs.get('amount')
         
         if from_account == to_account:
-            raise serializers.ValidationError({"accounts": "From account and to account cannot be the same."})
+            raise serializers.ValidationError("From account and to account cannot be the same.")
         
         if amount <= 0:
-            raise serializers.ValidationError({"accounts": "Amount must be greater than 0."})
+            raise serializers.ValidationError("Amount must be greater than 0.")
 
         if from_account.balance < amount:
-            raise serializers.ValidationError({"accounts": "From account balance is insufficient."})
+            raise serializers.ValidationError("From account balance is insufficient.")
         
         return attrs
 
@@ -156,14 +156,14 @@ class TransactionSerializer(serializers.ModelSerializer):
         contact_account = attrs.get('contact_account')
 
         if not accounts_data:
-            raise serializers.ValidationError({"accounts": "This field is required and cannot be empty."})
+            raise serializers.ValidationError("This field is required and cannot be empty.")
 
         for acc_idx, acc_data in enumerate(accounts_data):
             account = acc_data.get('account')
             splits_data = acc_data.get('splits', [])
 
             if not splits_data:
-                raise serializers.ValidationError({f"accounts[{acc_idx}].splits": "At least one split is required."})
+                raise serializers.ValidationError("At least one split is required.")
 
             for split_idx, split in enumerate(splits_data):
                 stype = split.get('type')
@@ -175,46 +175,46 @@ class TransactionSerializer(serializers.ModelSerializer):
                 # Rule enforcement based on transaction type
                 if stype == 'INCOME':
                     if not income_source:
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].income_source": "Income source is required for income transactions."})
+                        raise serializers.ValidationError("Income source is required for income transactions.")
                 
                 elif stype == 'EXPENSE':
                     if not expense_category:
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].expense_category": "Expense category is required for expense transactions."})
+                        raise serializers.ValidationError("Expense category is required for expense transactions.")
                 
                 elif stype == 'LOAN_TAKEN' or stype == 'MONEY_LENT':
                     if not contact:
-                        raise serializers.ValidationError({"contact": f"Contact is required for {stype.replace('_', ' ').title()}."})
+                        raise serializers.ValidationError(f"Contact is required for {stype.replace('_', ' ').title()}.")
                     if not contact_account:
-                        raise serializers.ValidationError({"contact_account": f"Contact account is required for {stype.replace('_', ' ').title()}."})
+                        raise serializers.ValidationError(f"Contact account is required for {stype.replace('_', ' ').title()}.")
                 
                 elif stype == 'LOAN_REPAYMENT' or stype == 'REIMBURSEMENT':
                     if not contact:
-                        raise serializers.ValidationError({"contact": f"Contact is required for {stype.replace('_', ' ').title()}."})
+                        raise serializers.ValidationError(f"Contact is required for {stype.replace('_', ' ').title()}.")
                     if not contact_account:
-                        raise serializers.ValidationError({"contact_account": f"Contact account is required for {stype.replace('_', ' ').title()}."})
+                        raise serializers.ValidationError(f"Contact account is required for {stype.replace('_', ' ').title()}.")
                     if not loan:
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].loan": f"Loan is required for {stype.replace('_', ' ').title()}."})
+                        raise serializers.ValidationError(f"Loan is required for {stype.replace('_', ' ').title()}.")
                     
                     if loan and loan.contact != contact:
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].loan": "Selected loan must belong to the selected contact."})
+                        raise serializers.ValidationError(f"Selected loan must belong to the selected contact.")
 
                 # Balance Check (for outgoing money)
                 if stype in ['EXPENSE', 'MONEY_LENT', 'LOAN_REPAYMENT']:
                     if amount > account.balance:
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].amount": f"Insufficient balance in account '{account.account_name}'. Current balance: {account.balance}"})
+                        raise serializers.ValidationError(f"Insufficient balance in account '{account.account_name}'. Current balance: {account.balance}")
 
                 # Loan-specific validations
                 if stype == 'LOAN_REPAYMENT':
                     if loan and loan.type != 'TAKEN':
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].loan": "Loan repayment can only be applied to 'Loan Taken' type loans."})
+                        raise serializers.ValidationError(f"Loan repayment can only be applied to 'Loan Taken' type loans.")
                     if loan and amount > loan.remaining_amount:
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].amount": f"Repayment amount ({amount}) exceeds remaining loan amount ({loan.remaining_amount})."})
+                        raise serializers.ValidationError(f"Repayment amount ({amount}) exceeds remaining loan amount ({loan.remaining_amount}).")
                 
                 if stype == 'REIMBURSEMENT':
                     if loan and loan.type != 'LENT':
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].loan": "Reimbursement can only be applied to 'Money Lent' type loans."})
+                        raise serializers.ValidationError(f"Reimbursement can only be applied to 'Money Lent' type loans.")
                     if loan and amount > loan.remaining_amount:
-                        raise serializers.ValidationError({f"accounts[{acc_idx}].splits[{split_idx}].amount": f"Reimbursement amount ({amount}) exceeds remaining amount owed ({loan.remaining_amount})."})
+                        raise serializers.ValidationError(f"Reimbursement amount ({amount}) exceeds remaining amount owed ({loan.remaining_amount}).")
 
         return attrs
 
