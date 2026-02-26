@@ -4,6 +4,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
 from tracker.serializers.user import UserSerializer
+from django.conf import settings
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from urllib.parse import urlencode
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Email, To, Content
 
 class UserViewSet(viewsets.ModelViewSet):
     """
@@ -23,12 +33,15 @@ class UserViewSet(viewsets.ModelViewSet):
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permissions.AllowAny]
 
     def get_permissions(self):
         if self.action in ['create', 'forgot_password', 'reset_password']:
-            return [permissions.AllowAny()]
-        return [permissions.IsAuthenticated()]
+            permission_classes = [permissions.AllowAny]
+        elif self.action == 'me':
+            permission_classes = [permissions.IsAuthenticated]
+        else:
+            permission_classes = [permissions.IsAdminUser]
+        return [permission() for permission in permission_classes]
 
     def create(self, request, *args, **kwargs):
         username = request.data.get('username')
@@ -37,11 +50,16 @@ class UserViewSet(viewsets.ModelViewSet):
             last_name  = request.data.get('last_name', '').lower()
             import random, string
             base = f"{first_name}{last_name}" or "user"
-            while True:
+            for _ in range(10):  # avoid infinite loop
                 suggestion = base + ''.join(random.choices(string.digits, k=3))
                 if not User.objects.filter(username=suggestion).exists():
                     break
-            return __import__('rest_framework').response.Response(
+            else:
+                return Response(
+                    {"detail": "Unable to generate username. Try again."},
+                    status=400
+                )
+            return Response(
                 {'username': ['A user with that username already exists.'], 'suggestion': suggestion},
                 status=400,
             )
@@ -66,7 +84,8 @@ class UserViewSet(viewsets.ModelViewSet):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             
             frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-            reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+            params = urlencode({'uid': uid, 'token': token})
+            reset_url = f"{frontend_url}/reset-password?{params}"
 
             subject = "Reset Your XPENSE Password"
             html_content = f"""
