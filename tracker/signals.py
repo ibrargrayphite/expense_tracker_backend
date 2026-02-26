@@ -4,7 +4,7 @@ from django.dispatch import receiver
 from django.contrib.auth.models import User
 from .models import (
     Account, ExpenseCategory, TransactionAccount, 
-    Transaction, TransactionSplit, Loan, InternalTransaction
+    Transaction, TransactionSplit, Loan, InternalTransaction, ContactAccount, Contact
 )
 
 @receiver(post_save, sender=User)
@@ -50,3 +50,13 @@ def delete_orphaned_transaction(sender, instance, **kwargs):
             instance.transaction.delete()
     except (Transaction.DoesNotExist, Exception):
         pass
+
+@receiver(post_save, sender=Contact)
+def create_contact_account(sender, instance, created, **kwargs):
+    if created:
+        ContactAccount.objects.create(
+            contact=instance,
+            bank_name="CASH",
+            account_name=f"{instance.first_name}-{instance.last_name}",
+            account_number="CASH-001",
+        )
