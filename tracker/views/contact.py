@@ -50,9 +50,4 @@ class ContactAccountViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        # Ensure the submitted contact belongs to the requesting user
-        contact = serializer.validated_data.get('contact')
-        if contact.user != self.request.user:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("You do not own this contact.")
         serializer.save()
