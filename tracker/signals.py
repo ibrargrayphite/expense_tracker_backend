@@ -57,6 +57,6 @@ def create_contact_account(sender, instance, created, **kwargs):
         ContactAccount.objects.create(
             contact=instance,
             bank_name="CASH",
-            account_name=f"{instance.first_name}-{instance.last_name}",
+            account_name=f"{instance.first_name} {instance.last_name}",
             account_number="CASH-001",
         )

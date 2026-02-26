@@ -9,13 +9,19 @@ from django.db.models import Sum
 
 class InternalTransactionSerializer(serializers.ModelSerializer):
     from_account_name = serializers.CharField(source='from_account.account_name', read_only=True)
+    from_bank_name = serializers.CharField(source='from_account.bank_name', read_only=True)
+    from_account_number = serializers.CharField(source='from_account.account_number', read_only=True)
     to_account_name = serializers.CharField(source='to_account.account_name', read_only=True)
+    to_bank_name = serializers.CharField(source='to_account.bank_name', read_only=True)
+    to_account_number = serializers.CharField(source='to_account.account_number', read_only=True)
 
     class Meta:
         model = InternalTransaction
         fields = (
-            'id', 'from_account', 'from_account_name', 'to_account', 
-            'to_account_name', 'amount', 'note', 'date', 'created_at'
+            'id', 'from_account', 'from_account_name', 'from_bank_name', 
+            'from_account_number', 'to_account', 'to_account_name', 
+            'to_bank_name', 'to_account_number', 'amount', 'note', 
+            'date', 'created_at'
         )
         read_only_fields = ('user', 'created_at')
 
@@ -69,10 +75,11 @@ class TransactionAccountSerializer(serializers.ModelSerializer):
     splits = TransactionSplitSerializer(many=True)
     account_name = serializers.CharField(source='account.account_name', read_only=True)
     bank_name = serializers.CharField(source='account.bank_name', read_only=True)
+    account_number = serializers.CharField(source='account.account_number', read_only=True)
 
     class Meta:
         model = TransactionAccount
-        fields = ('id', 'account', 'account_name', 'bank_name', 'splits')
+        fields = ('id', 'account', 'account_name', 'bank_name', 'account_number', 'splits')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -83,6 +90,9 @@ class TransactionAccountSerializer(serializers.ModelSerializer):
 class TransactionSerializer(serializers.ModelSerializer):
     accounts = TransactionAccountSerializer(many=True)
     contact_name = serializers.SerializerMethodField(read_only=True)
+    contact_account_name = serializers.CharField(source='contact_account.account_name', read_only=True)
+    contact_account_number = serializers.CharField(source='contact_account.account_number', read_only=True)
+    contact_bank_name = serializers.CharField(source='contact_account.bank_name', read_only=True)
     expense_category_name = serializers.SerializerMethodField(read_only=True)
     income_source_name = serializers.SerializerMethodField(read_only=True)
     note = serializers.SerializerMethodField(read_only=True)
@@ -92,6 +102,7 @@ class TransactionSerializer(serializers.ModelSerializer):
         model = Transaction
         fields = (
             'id', 'contact', 'contact_name', 'contact_account', 
+            'contact_account_name', 'contact_account_number', 'contact_bank_name',
             'date', 'image', 'accounts', 'total_amount', 
             'expense_category_name', 'income_source_name', 'note',
             'created_at'
