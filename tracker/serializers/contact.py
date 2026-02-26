@@ -1,19 +1,50 @@
 from rest_framework import serializers
 from tracker.models import Contact, ContactAccount
+from django.db.models import Sum
+from decimal import Decimal
 
 class ContactSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField(read_only=True)
+    loan_stats = serializers.SerializerMethodField(read_only=True)
+    accounts = serializers.SerializerMethodField(read_only=True)
+    loans = serializers.SerializerMethodField(read_only=True)
+    transactions = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Contact
         fields = (
             'id', 'first_name', 'last_name', 'full_name',
             'phone1', 'phone2', 'email', 'created_at', 'updated_at',
+            'loan_stats', 'accounts', 'loans', 'transactions'
         )
         read_only_fields = ('user', 'created_at', 'updated_at')
 
     def get_full_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
+
+    def get_accounts(self, obj):
+        return ContactAccountSerializer(obj.accounts.all(), many=True).data
+
+    def get_loans(self, obj):
+        from tracker.serializers.loan import LoanSerializer
+        return LoanSerializer(obj.loans.all(), many=True).data
+
+    def get_transactions(self, obj):
+        # We might need a proper transaction serializer here, but for now we can do a simple list
+        # or use a simplified version to avoid circular imports
+        from tracker.serializers.transaction import TransactionSerializer
+        return TransactionSerializer(obj.transactions.all().order_by('-date')[:10], many=True).data
+
+    def get_loan_stats(self, obj):
+        loans = obj.loans.all()
+        total_loaned = loans.filter(type='TAKEN').aggregate(Sum('remaining_amount'))['remaining_amount__sum'] or Decimal('0.00')
+        total_lent = loans.filter(type='LENT').aggregate(Sum('remaining_amount'))['remaining_amount__sum'] or Decimal('0.00')
+        
+        return {
+            'total_loaned': float(total_loaned),
+            'total_lent': float(total_lent),
+            'net_balance': float(total_lent - total_loaned)
+        }
 
     def validate_first_name(self, value):
         if not value.strip():
