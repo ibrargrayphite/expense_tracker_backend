@@ -29,8 +29,9 @@ class AccountSerializer(serializers.ModelSerializer):
         
         user = self.context['request'].user
         account_id = self.instance.id if self.instance else None
+        bank_name = self.initial_data.get('bank_name')
         
-        if Account.objects.filter(user=user, account_number=value.strip()).exclude(id=account_id).exists():
+        if Account.objects.filter(user=user, account_number=value.strip(), bank_name=bank_name).exclude(id=account_id).exists():
             raise serializers.ValidationError("An account with this number already exists for your profile.")
             
         return value.strip()

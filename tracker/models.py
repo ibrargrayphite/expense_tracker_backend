@@ -24,7 +24,7 @@ class Account(models.Model):
 
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "account_number"],
+                fields=["user", "account_number", "bank_name"],
                 name="unique_account_per_user"
             ),
             models.CheckConstraint(

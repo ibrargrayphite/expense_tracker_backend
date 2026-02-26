@@ -95,9 +95,10 @@ class ContactAccountSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Account number cannot be empty.")
         
         contact = self.initial_data.get('contact')
+        bank_name = self.initial_data.get('bank_name')
         if contact:
             account_id = self.instance.id if self.instance else None
-            if ContactAccount.objects.filter(contact_id=contact, account_number=value.strip()).exclude(id=account_id).exists():
+            if ContactAccount.objects.filter(contact_id=contact, account_number=value.strip(), bank_name=bank_name).exclude(id=account_id).exists():
                 raise serializers.ValidationError("This account number is already registered for this contact.")
                 
         return value.strip()
