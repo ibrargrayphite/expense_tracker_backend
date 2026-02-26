@@ -83,7 +83,11 @@ class ContactAccountSerializer(serializers.ModelSerializer):
     def validate_bank_name(self, value):
         if not value.strip():
             raise serializers.ValidationError("Bank name cannot be empty.")
-        return value.strip()
+        bank_name = value.strip().upper()
+        if bank_name == 'CASH':
+            if ContactAccount.objects.filter(contact=self.initial_data.get('contact'), bank_name=bank_name).exists():
+                raise serializers.ValidationError("Can't have more than one Cash Wallet.")
+        return bank_name
 
     def validate_account_name(self, value):
         if not value.strip():
