@@ -45,6 +45,8 @@ class TransactionSplitSerializer(serializers.ModelSerializer):
     loan_details = serializers.SerializerMethodField(read_only=True)
     expense_category_name = serializers.CharField(source='expense_category.name', read_only=True)
     income_source_name = serializers.CharField(source='income_source.name', read_only=True)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    type = serializers.CharField(source='type.value', read_only=True)
 
     class Meta:
         model = TransactionSplit
@@ -70,6 +72,11 @@ class TransactionSplitSerializer(serializers.ModelSerializer):
                 "contact": f"{obj.loan.contact.first_name} {obj.loan.contact.last_name}"
             }
         return None
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be greater than 0.")
+        return value
 
 class TransactionAccountSerializer(serializers.ModelSerializer):
     splits = TransactionSplitSerializer(many=True)
@@ -171,6 +178,9 @@ class TransactionSerializer(serializers.ModelSerializer):
                 loan = split.get('loan')
                 expense_category = split.get('expense_category')
                 income_source = split.get('income_source')
+
+                if not stype:
+                    raise serializers.ValidationError("Transaction type is required.")
 
                 # Rule enforcement based on transaction type
                 if stype == 'INCOME':

@@ -119,7 +119,6 @@ class UserViewSet(viewsets.ModelViewSet):
 
             return Response({"detail": "Password reset link sent to your email."})
         except Exception as e:
-            print(e)
             return Response({'detail': 'An error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
