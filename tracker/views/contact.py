@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions
 from tracker.models import Contact, ContactAccount
 from tracker.serializers.contact import ContactSerializer, ContactAccountSerializer
+from tracker.pagination import StandardResultsSetPagination
 
 class ContactViewSet(viewsets.ModelViewSet):
     """
@@ -15,6 +16,7 @@ class ContactViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ContactSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         return Contact.objects.filter(user=self.request.user).order_by('first_name', 'last_name')
@@ -37,6 +39,7 @@ class ContactAccountViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ContactAccountSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         qs = ContactAccount.objects.filter(

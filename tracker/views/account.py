@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions
 from rest_framework.exceptions import ValidationError
 from tracker.models import Account
 from tracker.serializers.account import AccountSerializer
+from tracker.pagination import StandardResultsSetPagination
 
 class AccountViewSet(viewsets.ModelViewSet):
     """
@@ -16,6 +17,7 @@ class AccountViewSet(viewsets.ModelViewSet):
     """
     serializer_class = AccountSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         return Account.objects.filter(user=self.request.user).order_by('-created_at')

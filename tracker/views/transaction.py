@@ -5,6 +5,7 @@ from django.db import transaction
 from django.http import HttpResponse
 from tracker.models import InternalTransaction, Transaction, TransactionAccount, TransactionSplit, Loan, Account
 from tracker.serializers.transaction import InternalTransactionSerializer, TransactionSerializer
+from tracker.pagination import TransactionResultsSetPagination
 import openpyxl
 from openpyxl.styles import Font, Alignment
 from django.db.models import Sum
@@ -22,6 +23,7 @@ class TransactionViewSet(mixins.CreateModelMixin,
     """
     serializer_class = TransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = TransactionResultsSetPagination
 
     from rest_framework.decorators import action
 
@@ -192,6 +194,7 @@ class InternalTransactionViewSet(mixins.CreateModelMixin,
     """
     serializer_class = InternalTransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = TransactionResultsSetPagination
 
     def get_queryset(self):
         return InternalTransaction.objects.filter(

@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions
 from tracker.models import IncomeSource, ExpenseCategory
 from tracker.serializers.categories import IncomeSourceSerializer, ExpenseCategorySerializer
+from tracker.pagination import StandardResultsSetPagination
 
 class IncomeSourceViewSet(viewsets.ModelViewSet):
     """
@@ -15,6 +16,7 @@ class IncomeSourceViewSet(viewsets.ModelViewSet):
     """
     serializer_class = IncomeSourceSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         return IncomeSource.objects.filter(user=self.request.user).order_by('name')
@@ -35,6 +37,7 @@ class ExpenseCategoryViewSet(viewsets.ModelViewSet):
     """
     serializer_class = ExpenseCategorySerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         return ExpenseCategory.objects.filter(user=self.request.user).order_by('name')
