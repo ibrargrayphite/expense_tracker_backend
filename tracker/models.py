@@ -64,6 +64,14 @@ class ContactAccount(models.Model):
     account_number = models.CharField(max_length=50)
     iban = models.CharField(max_length=50, blank=True, null=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["contact", "account_number", "bank_name"],
+                name="unique_account_per_contact"
+            )
+        ]
+
     def __str__(self):
         return f"{self.bank_name} - {self.account_name} - {self.account_number}"
 

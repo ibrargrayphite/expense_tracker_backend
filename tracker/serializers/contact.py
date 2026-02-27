@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from tracker.models import Contact, ContactAccount
+from tracker.models import Contact, ContactAccount, Account
 from django.db.models import Sum
 from decimal import Decimal
 
@@ -87,7 +87,7 @@ class ContactAccountSerializer(serializers.ModelSerializer):
         if bank_name == 'CASH':
             if ContactAccount.objects.filter(contact=self.initial_data.get('contact'), bank_name=bank_name).exists():
                 raise serializers.ValidationError("Can't have more than one Cash Wallet.")
-        return bank_name
+        return value
 
     def validate_account_name(self, value):
         if not value.strip():
@@ -98,11 +98,18 @@ class ContactAccountSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError("Account number cannot be empty.")
         
-        contact = self.initial_data.get('contact')
+        contact_id = self.initial_data.get('contact')
+        account_id = self.instance.id if self.instance else None
         bank_name = self.initial_data.get('bank_name')
-        if contact:
-            account_id = self.instance.id if self.instance else None
-            if ContactAccount.objects.filter(contact_id=contact, account_number=value.strip(), bank_name=bank_name).exclude(id=account_id).exists():
-                raise serializers.ValidationError("This account number is already registered for this contact.")
-                
+        
+        if ContactAccount.objects.filter(
+            contact_id=contact_id,
+            account_number=value.strip(), 
+            bank_name=bank_name, 
+        ).exclude(id=account_id).exists():
+            raise serializers.ValidationError("An account with this number already exists for this contact.")
+
+        if Account.objects.filter(account_number=value.strip(), bank_name=bank_name).exists():
+            raise serializers.ValidationError("An account with this number already exists in your own accounts.")
+            
         return value.strip()

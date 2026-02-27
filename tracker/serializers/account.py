@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from tracker.models import Account
+from tracker.models import Account, ContactAccount
 from rest_framework.validators import UniqueTogetherValidator
 
 class AccountSerializer(serializers.ModelSerializer):
@@ -33,5 +33,8 @@ class AccountSerializer(serializers.ModelSerializer):
         
         if Account.objects.filter(user=user, account_number=value.strip(), bank_name=bank_name).exclude(id=account_id).exists():
             raise serializers.ValidationError("An account with this number already exists for your profile.")
+        
+        if ContactAccount.objects.filter(account_number=value.strip(), bank_name=bank_name).exists():
+            raise serializers.ValidationError("An account with this number already exists for a contact.")
             
         return value.strip()
