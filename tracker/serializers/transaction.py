@@ -46,7 +46,6 @@ class TransactionSplitSerializer(serializers.ModelSerializer):
     expense_category_name = serializers.CharField(source='expense_category.name', read_only=True)
     income_source_name = serializers.CharField(source='income_source.name', read_only=True)
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
-    type = serializers.CharField(source='type.value', read_only=True)
 
     class Meta:
         model = TransactionSplit
