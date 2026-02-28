@@ -13,7 +13,153 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from tracker.filters import TransactionFilter, InternalTransactionFilter
 from rest_framework.response import Response
+from rest_framework.decorators import action
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample,
+    OpenApiResponse, inline_serializer
+)
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers as drf_serializers
 
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Transactions"],
+        summary="List transactions",
+        description=(
+            "Returns a paginated list of all transactions for the authenticated user, ordered newest first.\n\n"
+            "Each transaction can be one of:\n"
+            "- **Standard** – INCOME or EXPENSE with splits\n"
+            "- **Loan-related** – LOAN_TAKEN, MONEY_LENT, LOAN_REPAYMENT, or REIMBURSEMENT\n"
+            "- **Internal Transfer** – auto-serialized via `InternalTransactionSerializer` with `is_internal=true`\n\n"
+            "**Filterable by:** `type`, `account`, `contact`, `expense_category`, `income_source`, `start_date`, `end_date`, `min_amount`, `max_amount`\n\n"
+            "**Searchable by:** contact name, split notes, account name\n\n"
+            "**Sortable by:** `date`, `created_at`, `amount`"
+        ),
+        parameters=[
+            OpenApiParameter(
+                "type", OpenApiTypes.STR,
+                description=(
+                    "Filter by transaction type. "
+                    "Choices: `INCOME`, `EXPENSE`, `LOAN_TAKEN`, `MONEY_LENT`, `LOAN_REPAYMENT`, `REIMBURSEMENT`, `TRANSFER`."
+                )
+            ),
+            OpenApiParameter("account", OpenApiTypes.INT, description="Filter by account ID (user's bank account)."),
+            OpenApiParameter("contact", OpenApiTypes.INT, description="Filter by contact ID."),
+            OpenApiParameter("expense_category", OpenApiTypes.INT, description="Filter by expense category ID."),
+            OpenApiParameter("income_source", OpenApiTypes.INT, description="Filter by income source ID."),
+            OpenApiParameter("start_date", OpenApiTypes.DATE, description="Filter transactions on or after this date (YYYY-MM-DD)."),
+            OpenApiParameter("end_date", OpenApiTypes.DATE, description="Filter transactions on or before this date (YYYY-MM-DD)."),
+            OpenApiParameter("min_amount", OpenApiTypes.NUMBER, description="Filter transactions with total amount ≥ this value."),
+            OpenApiParameter("max_amount", OpenApiTypes.NUMBER, description="Filter transactions with total amount ≤ this value."),
+            OpenApiParameter("search", OpenApiTypes.STR, description="Full-text search across contact names, split notes, and internal transfer notes."),
+            OpenApiParameter("ordering", OpenApiTypes.STR, description="Sort field. Prefix with `-` for descending. Options: `date`, `created_at`, `amount`."),
+        ],
+        responses={200: TransactionSerializer(many=True)},
+    ),
+    create=extend_schema(
+        tags=["Transactions"],
+        summary="Create a transaction",
+        description=(
+            "Creates a new income, expense, or loan-related transaction.\n\n"
+            "**Payload structure:**\n"
+            "```json\n"
+            "{\n"
+            "  \"date\": \"2024-01-15T10:30:00Z\",\n"
+            "  \"contact\": <contact_id | null>,\n"
+            "  \"contact_account\": <contact_account_id | null>,\n"
+            "  \"accounts\": [\n"
+            "    {\n"
+            "      \"account\": <user_account_id>,\n"
+            "      \"splits\": [\n"
+            "        {\n"
+            "          \"type\": \"INCOME|EXPENSE|LOAN_TAKEN|MONEY_LENT|LOAN_REPAYMENT|REIMBURSEMENT\",\n"
+            "          \"amount\": \"500.00\",\n"
+            "          \"income_source\": <id | null>,\n"
+            "          \"expense_category\": <id | null>,\n"
+            "          \"loan\": <id | null>,\n"
+            "          \"note\": \"optional note\"\n"
+            "        }\n"
+            "      ]\n"
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "```\n\n"
+            "**Type-specific rules:**\n\n"
+            "| Type | contact | contact_account | income_source | expense_category | loan |\n"
+            "|------|---------|-----------------|---------------|------------------|------|\n"
+            "| `INCOME` | ❌ | ❌ | ✅ Required | ❌ | ❌ |\n"
+            "| `EXPENSE` | ❌ | ❌ | ❌ | ✅ Required | ❌ |\n"
+            "| `LOAN_TAKEN` | ✅ Required | ✅ Required | ❌ | ❌ | ❌ (auto-created) |\n"
+            "| `MONEY_LENT` | ✅ Required | ✅ Required | ❌ | ❌ | ❌ (auto-created) |\n"
+            "| `LOAN_REPAYMENT` | ✅ Required | ✅ Required | ❌ | ❌ | ✅ Required |\n"
+            "| `REIMBURSEMENT` | ✅ Required | ✅ Required | ❌ | ❌ | ✅ Required |\n\n"
+            "**Balance rules:**\n"
+            "- `EXPENSE`, `MONEY_LENT`, `LOAN_REPAYMENT` deduct from account balance (balance must be sufficient).\n"
+            "- `INCOME`, `LOAN_TAKEN`, `REIMBURSEMENT` add to account balance."
+        ),
+        request=TransactionSerializer,
+        responses={
+            201: TransactionSerializer,
+            400: OpenApiResponse(description="Validation error (missing required fields, insufficient balance, invalid loan, etc.)."),
+        },
+        examples=[
+            OpenApiExample(
+                "EXPENSE transaction",
+                request_only=True,
+                value={
+                    "date": "2024-01-15T10:30:00Z",
+                    "accounts": [
+                        {
+                            "account": 1,
+                            "splits": [
+                                {"type": "EXPENSE", "amount": "150.00", "expense_category": 2, "note": "Groceries at supermarket"}
+                            ]
+                        }
+                    ]
+                },
+            ),
+            OpenApiExample(
+                "INCOME transaction",
+                request_only=True,
+                value={
+                    "date": "2024-01-15T09:00:00Z",
+                    "accounts": [
+                        {
+                            "account": 1,
+                            "splits": [
+                                {"type": "INCOME", "amount": "5000.00", "income_source": 1, "note": "Monthly salary"}
+                            ]
+                        }
+                    ]
+                },
+            ),
+            OpenApiExample(
+                "LOAN_REPAYMENT transaction",
+                request_only=True,
+                value={
+                    "date": "2024-01-15T12:00:00Z",
+                    "contact": 3,
+                    "contact_account": 5,
+                    "accounts": [
+                        {
+                            "account": 1,
+                            "splits": [
+                                {"type": "LOAN_REPAYMENT", "amount": "200.00", "loan": 2, "note": "Partial repayment"}
+                            ]
+                        }
+                    ]
+                },
+            ),
+        ],
+    ),
+    retrieve=extend_schema(
+        tags=["Transactions"],
+        summary="Retrieve a transaction",
+        description="Returns full details of a single transaction including all accounts and splits.",
+        responses={200: TransactionSerializer},
+    ),
+)
 class TransactionViewSet(mixins.CreateModelMixin,
                          mixins.ListModelMixin,
                          mixins.RetrieveModelMixin,
@@ -33,10 +179,30 @@ class TransactionViewSet(mixins.CreateModelMixin,
     filterset_class = TransactionFilter
     search_fields = ['contact__first_name', 'contact__last_name', 'accounts__splits__note', 'accounts__account__account_name', 'accounts__account__bank_name']
     ordering_fields = ['date', 'created_at', 'amount']
-    # Default ordering is handled directly in get_queryset()
 
-    from rest_framework.decorators import action
-
+    @extend_schema(
+        tags=["Transactions"],
+        summary="Upload a receipt image",
+        description=(
+            "Uploads or replaces the receipt/image attached to an existing transaction.\n\n"
+            "Send as **multipart/form-data** with a single `image` field containing the image file.\n\n"
+            "Supported formats: JPEG, PNG, WebP, GIF."
+        ),
+        request=inline_serializer(
+            name="UploadImageRequest",
+            fields={"image": drf_serializers.ImageField(help_text="Image file (JPEG, PNG, WebP, GIF).")}
+        ),
+        responses={
+            200: OpenApiResponse(
+                description="Image uploaded successfully.",
+                examples=[OpenApiExample("Success", value={"detail": "Image uploaded successfully."})],
+            ),
+            400: OpenApiResponse(
+                description="No image file provided.",
+                examples=[OpenApiExample("Missing image", value={"image": "No image file provided."})],
+            ),
+        },
+    )
     @action(detail=True, methods=['patch'], url_path='upload_image')
     def upload_image(self, request, pk=None):
         """Patch only the image field of an existing transaction."""
@@ -48,6 +214,25 @@ class TransactionViewSet(mixins.CreateModelMixin,
         instance.save(update_fields=['image'])
         return Response({'detail': 'Image uploaded successfully.'}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        tags=["Transactions"],
+        summary="Export transactions to Excel",
+        description=(
+            "Generates and downloads an Excel (.xlsx) file containing all transactions (both regular and internal transfers).\n\n"
+            "Columns: `Date`, `From`, `To`, `Type`, `Amount`, `Category`, `Note`\n\n"
+            "**Optional date filters:**\n"
+            "- `start_date` – Include transactions from this date (YYYY-MM-DD)\n"
+            "- `end_date` – Include transactions up to this date (YYYY-MM-DD)\n\n"
+            "Returns a file download with `Content-Disposition: attachment; filename=transactions.xlsx`."
+        ),
+        parameters=[
+            OpenApiParameter("start_date", OpenApiTypes.DATE, description="Export from this date (YYYY-MM-DD)."),
+            OpenApiParameter("end_date", OpenApiTypes.DATE, description="Export up to this date (YYYY-MM-DD)."),
+        ],
+        responses={
+            200: OpenApiResponse(description="Excel file download."),
+        },
+    )
     @action(detail=False, methods=['get'])
     def export_excel(self, request):
         user = request.user
@@ -207,6 +392,76 @@ class TransactionViewSet(mixins.CreateModelMixin,
             raise ValidationError({'detail': str(e)})
 
 
+@extend_schema_view(
+    list=extend_schema(
+        tags=["Internal Transfers"],
+        summary="List internal transfers",
+        description=(
+            "Returns a paginated list of all internal (account-to-account) transfers for the authenticated user.\n\n"
+            "**Filterable by:** `account`, `start_date`, `end_date`, `min_amount`, `max_amount`\n\n"
+            "**Searchable by:** `note`, `from_account__account_name`, `to_account__account_name`\n\n"
+            "**Sortable by:** `date`, `created_at`, `amount`"
+        ),
+        parameters=[
+            OpenApiParameter("account", OpenApiTypes.INT, description="Filter by account ID (matches either from_account or to_account)."),
+            OpenApiParameter("start_date", OpenApiTypes.DATE, description="Filter transfers on or after this date (YYYY-MM-DD)."),
+            OpenApiParameter("end_date", OpenApiTypes.DATE, description="Filter transfers on or before this date (YYYY-MM-DD)."),
+            OpenApiParameter("min_amount", OpenApiTypes.NUMBER, description="Filter transfers with amount ≥ this value."),
+            OpenApiParameter("max_amount", OpenApiTypes.NUMBER, description="Filter transfers with amount ≤ this value."),
+            OpenApiParameter("search", OpenApiTypes.STR, description="Search by note text."),
+            OpenApiParameter("ordering", OpenApiTypes.STR, description="Sort field. Prefix with `-` for descending. Options: `date`, `created_at`, `amount`."),
+        ],
+        responses={200: InternalTransactionSerializer(many=True)},
+    ),
+    create=extend_schema(
+        tags=["Internal Transfers"],
+        summary="Create an internal transfer",
+        description=(
+            "Transfers money between two of the authenticated user's own accounts.\n\n"
+            "**Required fields:** `from_account`, `to_account`, `amount`\n\n"
+            "**Optional fields:** `note`, `date`\n\n"
+            "**Validation rules:**\n"
+            "- `from_account` and `to_account` must be different accounts.\n"
+            "- `amount` must be greater than 0.\n"
+            "- `from_account` must have sufficient balance.\n\n"
+            "**Side effects:**\n"
+            "- Deducts `amount` from `from_account.balance`\n"
+            "- Adds `amount` to `to_account.balance`\n"
+            "- Automatically creates a linked `Transaction` record for unified activity view"
+        ),
+        request=InternalTransactionSerializer,
+        responses={
+            201: InternalTransactionSerializer,
+            400: OpenApiResponse(
+                description="Validation error.",
+                examples=[
+                    OpenApiExample("Same account", value={"non_field_errors": ["From account and to account cannot be the same."]}),
+                    OpenApiExample("Insufficient balance", value={"non_field_errors": ["From account balance is insufficient."]}),
+                    OpenApiExample("Zero amount", value={"non_field_errors": ["Amount must be greater than 0."]}),
+                ],
+            ),
+        },
+        examples=[
+            OpenApiExample(
+                "Transfer between accounts",
+                request_only=True,
+                value={
+                    "from_account": 1,
+                    "to_account": 2,
+                    "amount": "1000.00",
+                    "date": "2024-01-15T14:00:00Z",
+                    "note": "Moving savings to checking",
+                },
+            )
+        ],
+    ),
+    retrieve=extend_schema(
+        tags=["Internal Transfers"],
+        summary="Retrieve an internal transfer",
+        description="Returns the full details of a specific internal transfer.",
+        responses={200: InternalTransactionSerializer},
+    ),
+)
 class InternalTransactionViewSet(mixins.CreateModelMixin,
                                  mixins.ListModelMixin,
                                  mixins.RetrieveModelMixin,
