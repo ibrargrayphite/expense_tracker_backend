@@ -26,14 +26,11 @@ class ContactViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ContactFilter
     search_fields = ['first_name', 'last_name', 'phone1', 'phone2', 'email']
-    ordering_fields = ['first_name', 'last_name', 'accounts_count']
+    ordering_fields = ['first_name', 'last_name']
     ordering = ['first_name', 'last_name']
 
     def get_queryset(self):
-        from django.db.models import Count
-        return Contact.objects.filter(user=self.request.user).annotate(
-            accounts_count=Count('accounts')
-        ).order_by('first_name', 'last_name')
+        return Contact.objects.filter(user=self.request.user).order_by('first_name', 'last_name')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

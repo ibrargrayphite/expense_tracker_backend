@@ -5,7 +5,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from tracker.models import Loan
 from tracker.serializers.loan import LoanSerializer
-from tracker.pagination import StandardResultsSetPagination
+from tracker.pagination import TransactionResultsSetPagination
 from tracker.filters import LoanFilter
 
 class LoanViewSet(mixins.ListModelMixin,
@@ -19,11 +19,11 @@ class LoanViewSet(mixins.ListModelMixin,
     """
     serializer_class = LoanSerializer
     permission_classes = [permissions.IsAuthenticated]
-    pagination_class = StandardResultsSetPagination
+    pagination_class = TransactionResultsSetPagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = LoanFilter
     search_fields = ['contact__first_name', 'contact__last_name', 'description']
-    ordering_fields = ['total_amount', 'created_at', 'contact__first_name']
+    ordering_fields = ['remaining_amount', 'created_at', 'contact__first_name']
 
     def get_queryset(self):
         return Loan.objects.filter(user=self.request.user).order_by('-created_at')

@@ -3,19 +3,40 @@ from tracker.models import Transaction, Loan, Account, Contact, InternalTransact
 from django.db.models import Sum, Count
 
 class ContactFilter(django_filters.FilterSet):
-    accounts = django_filters.CharFilter(method='filter_accounts')
+    net_balance = django_filters.CharFilter(method='filter_net_balance')
 
     class Meta:
         model = Contact
         fields = ['first_name', 'last_name', 'phone1']
         
-    # def filter_accounts(self, queryset, name, value):
-    #     queryset = queryset.annotate(acct_count=Count('accounts'))
-    #     if value == 'HAS_ACCOUNTS':
-    #         return queryset.filter(acct_count__gt=0)
-    #     if value == 'NO_ACCOUNTS':
-    #         return queryset.filter(acct_count=0)
-    #     return queryset
+    def filter_net_balance(self, queryset, name, value):
+        from django.db.models import Sum, Q, F, DecimalField
+        from django.db.models.functions import Coalesce
+        from decimal import Decimal
+
+        queryset = queryset.annotate(
+            total_lent=Coalesce(
+                Sum('loans__remaining_amount', filter=Q(loans__type='LENT')),
+                Decimal('0.0'),
+                output_field=DecimalField()
+            ),
+            total_loaned=Coalesce(
+                Sum('loans__remaining_amount', filter=Q(loans__type='TAKEN')),
+                Decimal('0.0'),
+                output_field=DecimalField()
+            )
+        ).annotate(
+            annotated_net_balance=F('total_lent') - F('total_loaned')
+        )
+
+        if value == 'POSITIVE':
+            return queryset.filter(annotated_net_balance__gt=0)
+        if value == 'NEGATIVE':
+            return queryset.filter(annotated_net_balance__lt=0)
+        if value == 'SETTLED':
+            return queryset.filter(annotated_net_balance=0)
+            
+        return queryset
 
 class TransactionFilter(django_filters.FilterSet):
     start_date = django_filters.DateFilter(field_name="date", lookup_expr='gte')
@@ -90,13 +111,13 @@ class InternalTransactionFilter(django_filters.FilterSet):
         ).distinct()
 
 class LoanFilter(django_filters.FilterSet):
-    min_amount = django_filters.NumberFilter(field_name="total_amount", lookup_expr='gte')
-    max_amount = django_filters.NumberFilter(field_name="total_amount", lookup_expr='lte')
+    min_amount = django_filters.NumberFilter(field_name="remaining_amount", lookup_expr='gte')
+    max_amount = django_filters.NumberFilter(field_name="remaining_amount", lookup_expr='lte')
     status = django_filters.CharFilter(method='filter_status')
     
     class Meta:
         model = Loan
-        fields = ['type', 'min_amount', 'max_amount', 'contact']
+        fields = ['type', 'min_amount', 'max_amount', 'contact', 'remaining_amount']
         
     def filter_status(self, queryset, name, value):
         if value == 'ACTIVE':
