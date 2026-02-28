@@ -27,9 +27,10 @@ class UserViewSet(viewsets.ModelViewSet):
     destroy  DELETE /api/users/{id}/     (Admin only)
 
     Custom actions:
-    - me       GET    /api/users/me/       (Get current user)
-    - forgot   POST   /api/users/forgot/   (Request password reset)
-    - reset    POST   /api/users/reset/    (Perform password reset)
+    - me          GET    /api/users/me/          (Get current user)
+    - update_me   PATCH  /api/users/update_me/   (Update own profile)
+    - forgot      POST   /api/users/forgot/      (Request password reset)
+    - reset       POST   /api/users/reset/       (Perform password reset)
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -68,6 +69,48 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def me(self, request):
         serializer = self.get_serializer(request.user)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['patch'], permission_classes=[permissions.IsAuthenticated])
+    def update_me(self, request):
+        """Allow authenticated user to update their own profile fields."""
+        user = request.user
+        data = request.data
+
+        # Update basic User fields
+        for field in ('first_name', 'last_name', 'email'):
+            if field in data:
+                setattr(user, field, data[field])
+
+        # Update phone_number on UserProfile
+        if 'phone_number' in data:
+            from tracker.models import UserProfile
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.phone_number = data['phone_number']
+            profile.save()
+
+        # Handle password change (requires current_password + new_password)
+        new_password = data.get('new_password')
+        if new_password:
+            current_password = data.get('current_password')
+            if not current_password:
+                return Response(
+                    {'current_password': 'Current password is required to set a new one.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if not user.check_password(current_password):
+                return Response(
+                    {'current_password': 'Current password is incorrect.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            try:
+                validate_password(new_password, user)
+            except ValidationError as e:
+                return Response({'new_password': e.messages}, status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(new_password)
+
+        user.save()
+        serializer = self.get_serializer(user)
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
