@@ -1,7 +1,13 @@
 from rest_framework import viewsets, permissions
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
 from tracker.models import Contact, ContactAccount
 from tracker.serializers.contact import ContactSerializer, ContactAccountSerializer
 from tracker.pagination import StandardResultsSetPagination
+from tracker.filters import ContactFilter
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
 
 class ContactViewSet(viewsets.ModelViewSet):
     """
@@ -17,12 +23,26 @@ class ContactViewSet(viewsets.ModelViewSet):
     serializer_class = ContactSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = ContactFilter
+    search_fields = ['first_name', 'last_name', 'phone1', 'phone2', 'email']
+    ordering_fields = ['first_name', 'last_name', 'accounts_count']
+    ordering = ['first_name', 'last_name']
 
     def get_queryset(self):
-        return Contact.objects.filter(user=self.request.user).order_by('first_name', 'last_name')
+        from django.db.models import Count
+        return Contact.objects.filter(user=self.request.user).annotate(
+            accounts_count=Count('accounts')
+        ).order_by('first_name', 'last_name')
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def dropdown(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 class ContactAccountViewSet(viewsets.ModelViewSet):
     """
@@ -54,3 +74,9 @@ class ContactAccountViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save()
+
+    @action(detail=False, methods=['get'])
+    def dropdown(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

@@ -1,4 +1,6 @@
 from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from tracker.models import IncomeSource, ExpenseCategory
 from tracker.serializers.categories import IncomeSourceSerializer, ExpenseCategorySerializer
 from tracker.pagination import StandardResultsSetPagination
@@ -21,6 +23,12 @@ class IncomeSourceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return IncomeSource.objects.filter(user=self.request.user).order_by('name')
 
+    @action(detail=False, methods=['get'])
+    def dropdown(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
@@ -41,6 +49,12 @@ class ExpenseCategoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return ExpenseCategory.objects.filter(user=self.request.user).order_by('name')
+
+    @action(detail=False, methods=['get'])
+    def dropdown(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

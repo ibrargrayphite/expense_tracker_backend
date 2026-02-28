@@ -3,7 +3,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AccountViewSet, ContactViewSet, ContactAccountViewSet,
     IncomeSourceViewSet, ExpenseCategoryViewSet, LoanViewSet,
-    TransactionViewSet, InternalTransactionViewSet, UserViewSet
+    TransactionViewSet, InternalTransactionViewSet, UserViewSet,
+    ActivityView
 )
 
 router = DefaultRouter()
@@ -19,4 +20,5 @@ router.register(r'internal-transactions', InternalTransactionViewSet, basename='
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('activity/', ActivityView.as_view(), name='activity'),
 ]

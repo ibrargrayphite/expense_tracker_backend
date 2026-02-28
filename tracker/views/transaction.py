@@ -9,6 +9,9 @@ from tracker.pagination import TransactionResultsSetPagination
 import openpyxl
 from openpyxl.styles import Font, Alignment
 from django.db.models import Sum
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
+from tracker.filters import TransactionFilter, InternalTransactionFilter
 
 class TransactionViewSet(mixins.CreateModelMixin,
                          mixins.ListModelMixin,
@@ -24,6 +27,11 @@ class TransactionViewSet(mixins.CreateModelMixin,
     serializer_class = TransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = TransactionResultsSetPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = TransactionFilter
+    search_fields = ['contact__first_name', 'contact__last_name', 'accounts__splits__note', 'accounts__account__account_name', 'accounts__account__bank_name']
+    ordering_fields = ['date', 'created_at', 'amount']
+    # Default ordering is handled directly in get_queryset()
 
     from rest_framework.decorators import action
 
@@ -169,6 +177,8 @@ class TransactionViewSet(mixins.CreateModelMixin,
     def get_queryset(self):
         return Transaction.objects.filter(
             user=self.request.user
+        ).annotate(
+            amount=Sum('accounts__splits__amount')
         ).order_by('-date', '-created_at')
 
     @transaction.atomic
@@ -195,6 +205,10 @@ class InternalTransactionViewSet(mixins.CreateModelMixin,
     serializer_class = InternalTransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = TransactionResultsSetPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = InternalTransactionFilter
+    search_fields = ['note', 'from_account__account_name', 'to_account__account_name']
+    ordering_fields = ['date', 'created_at', 'amount']
 
     def get_queryset(self):
         return InternalTransaction.objects.filter(
