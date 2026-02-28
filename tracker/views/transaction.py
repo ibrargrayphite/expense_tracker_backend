@@ -12,6 +12,7 @@ from django.db.models import Sum
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from tracker.filters import TransactionFilter, InternalTransactionFilter
+from rest_framework.response import Response
 
 class TransactionViewSet(mixins.CreateModelMixin,
                          mixins.ListModelMixin,
@@ -20,9 +21,10 @@ class TransactionViewSet(mixins.CreateModelMixin,
     """
     Create and Read for transactions.
 
-    list     GET    /api/transactions/
-    create   POST   /api/transactions/
-    retrieve GET    /api/transactions/{id}/
+    list          GET    /api/transactions/
+    create        POST   /api/transactions/
+    retrieve      GET    /api/transactions/{id}/
+    upload_image  PATCH  /api/transactions/{id}/upload_image/
     """
     serializer_class = TransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -34,6 +36,17 @@ class TransactionViewSet(mixins.CreateModelMixin,
     # Default ordering is handled directly in get_queryset()
 
     from rest_framework.decorators import action
+
+    @action(detail=True, methods=['patch'], url_path='upload_image')
+    def upload_image(self, request, pk=None):
+        """Patch only the image field of an existing transaction."""
+        instance = self.get_object()
+        image = request.FILES.get('image')
+        if not image:
+            return Response({'image': 'No image file provided.'}, status=status.HTTP_400_BAD_REQUEST)
+        instance.image = image
+        instance.save(update_fields=['image'])
+        return Response({'detail': 'Image uploaded successfully.'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
     def export_excel(self, request):
