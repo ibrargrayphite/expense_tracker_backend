@@ -3,8 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AccountViewSet, ContactViewSet, ContactAccountViewSet,
     IncomeSourceViewSet, ExpenseCategoryViewSet, LoanViewSet,
-    TransactionViewSet, InternalTransactionViewSet, UserViewSet,
-    ActivityView
+    TransactionViewSet, InternalTransactionViewSet, UserViewSet
 )
 
 router = DefaultRouter()
