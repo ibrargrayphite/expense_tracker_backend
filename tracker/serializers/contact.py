@@ -61,6 +61,11 @@ class ContactSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Primary phone number cannot be empty.")
         return value.strip()
 
+    def validate(self, attrs):
+        if Contact.objects.filter(user=self.context['request'].user, first_name=attrs['first_name'], last_name=attrs['last_name']).exists():
+            raise serializers.ValidationError("A contact with this name already exists.")
+        return attrs
+
 class ContactAccountSerializer(serializers.ModelSerializer):
     contact_name = serializers.SerializerMethodField(read_only=True)
 

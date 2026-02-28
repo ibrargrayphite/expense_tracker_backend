@@ -7,6 +7,7 @@ from tracker.pagination import StandardResultsSetPagination
 from tracker.filters import ContactFilter
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 
 
 class ContactViewSet(viewsets.ModelViewSet):
@@ -71,6 +72,19 @@ class ContactAccountViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save()
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        if instance.bank_name.upper() == 'CASH':
+            raise ValidationError({"detail": "The system 'CASH' account cannot be modified."})
+        if ContactAccount.objects.filter(user=self.request.user, first_name=instance.first_name, last_name=instance.last_name).exclude(id=instance.id).exists():
+            raise ValidationError({"detail": "A contact with this name already exists."})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.bank_name.upper() == 'CASH':
+            raise ValidationError({"detail": "The system 'CASH' account cannot be deleted."})
+        instance.delete()
 
     @action(detail=False, methods=['get'])
     def dropdown(self, request):
