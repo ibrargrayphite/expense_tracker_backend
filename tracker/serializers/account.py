@@ -3,13 +3,29 @@ from tracker.models import Account, ContactAccount
 from rest_framework.validators import UniqueTogetherValidator
 
 class AccountSerializer(serializers.ModelSerializer):
+    recent_transactions = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Account
         fields = (
             'id', 'bank_name', 'account_name', 'account_number',
             'iban', 'balance', 'created_at', 'updated_at',
+            'recent_transactions'
         )
         read_only_fields = ('user', 'balance', 'created_at', 'updated_at')
+
+    def get_recent_transactions(self, obj):
+        from tracker.models import Transaction
+        from tracker.serializers.transaction import TransactionSerializer
+        from django.db.models import Q
+        
+        transactions = Transaction.objects.filter(
+            Q(accounts__account=obj) |
+            Q(internal_transaction__from_account=obj) |
+            Q(internal_transaction__to_account=obj)
+        ).distinct().order_by('-date', '-created_at')[:5]
+        
+        return TransactionSerializer(transactions, many=True, context=self.context).data
 
     def validate_bank_name(self, value):
         if not value.strip():

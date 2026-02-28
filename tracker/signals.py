@@ -15,7 +15,7 @@ def create_initial_user_data(sender, instance, created, **kwargs):
             user=instance,
             bank_name="CASH",
             account_name="Cash Wallet",
-            defaults={"account_number": "CASH-001", "balance": 0}
+            defaults={"account_number": "Physical Cash & Wallets", "balance": 0}
         )
     
         DEFAULT_EXPENSE_CATEGORIES = [
@@ -58,5 +58,5 @@ def create_contact_account(sender, instance, created, **kwargs):
             contact=instance,
             bank_name="CASH",
             account_name=f"{instance.first_name} {instance.last_name}",
-            account_number="CASH-001",
+            account_number="Physical Cash",
         )
