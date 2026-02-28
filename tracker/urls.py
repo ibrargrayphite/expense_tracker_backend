@@ -19,6 +19,5 @@ router.register(r'transactions', TransactionViewSet, basename='transaction')
 router.register(r'internal-transactions', InternalTransactionViewSet, basename='internal-transaction')
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('activity/', ActivityView.as_view(), name='activity'),
+    path('', include(router.urls))
 ]
