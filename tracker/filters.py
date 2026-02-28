@@ -43,8 +43,7 @@ class TransactionFilter(django_filters.FilterSet):
         return queryset.filter(
             Q(accounts__splits__note__icontains=value) |
             Q(contact__first_name__icontains=value) |
-            Q(contact__last_name__icontains=value) |
-            Q(contact_account__account_name__icontains=value)
+            Q(contact__last_name__icontains=value)
         ).distinct()
 
 class InternalTransactionFilter(django_filters.FilterSet):
@@ -66,9 +65,7 @@ class InternalTransactionFilter(django_filters.FilterSet):
     def filter_search(self, queryset, name, value):
         from django.db.models import Q
         return queryset.filter(
-            Q(note__icontains=value) |
-            Q(from_account__account_name__icontains=value) |
-            Q(to_account__account_name__icontains=value)
+            Q(note__icontains=value)
         ).distinct()
 
 class LoanFilter(django_filters.FilterSet):

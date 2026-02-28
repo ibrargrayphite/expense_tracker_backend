@@ -16,6 +16,9 @@ class ActivityView(APIView):
         tx_type = request.query_params.get('type')
         fetch_transactions = not tx_type or tx_type != 'TRANSFER'
         fetch_internal = not tx_type or tx_type == 'TRANSFER'
+        
+        if request.query_params.get('expense_category') or request.query_params.get('income_source'):
+            fetch_internal = False
 
         tx_qs = Transaction.objects.none()
         if fetch_transactions:
