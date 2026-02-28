@@ -208,6 +208,7 @@ class Transaction(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='transactions')
     contact = models.ForeignKey(Contact, on_delete=models.SET_NULL, null=True, blank=True, related_name='transactions')
     contact_account = models.ForeignKey(ContactAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_transactions')
+    internal_transaction = models.ForeignKey('InternalTransaction', on_delete=models.CASCADE, null=True, blank=True, related_name='transactions')
     date = models.DateTimeField(default=timezone.now)
     image = models.ImageField(upload_to='transactions/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

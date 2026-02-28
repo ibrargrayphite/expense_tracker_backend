@@ -94,7 +94,7 @@ class TransactionAccountSerializer(serializers.ModelSerializer):
             self.fields['account'].queryset = Account.objects.filter(user=request.user)
 
 class TransactionSerializer(serializers.ModelSerializer):
-    accounts = TransactionAccountSerializer(many=True)
+    accounts = TransactionAccountSerializer(many=True, required=False)
     contact_name = serializers.SerializerMethodField(read_only=True)
     contact_account_name = serializers.CharField(source='contact_account.account_name', read_only=True)
     contact_account_number = serializers.CharField(source='contact_account.account_number', read_only=True)
@@ -111,9 +111,20 @@ class TransactionSerializer(serializers.ModelSerializer):
             'contact_account_name', 'contact_account_number', 'contact_bank_name',
             'date', 'image', 'accounts', 'total_amount', 
             'expense_category_name', 'income_source_name', 'note',
-            'created_at'
+            'created_at', 'internal_transaction'
         )
         read_only_fields = ('user', 'created_at')
+
+    def to_representation(self, instance):
+        if getattr(instance, 'internal_transaction', None):
+            data = InternalTransactionSerializer(instance.internal_transaction, context=self.context).data
+            data['is_internal'] = True
+            data['type'] = 'TRANSFER'
+            data['id'] = instance.internal_transaction.id
+            data['transaction_id'] = instance.id
+            return data
+            
+        return super().to_representation(instance)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -160,6 +171,9 @@ class TransactionSerializer(serializers.ModelSerializer):
         accounts_data = attrs.get('accounts', [])
         contact = attrs.get('contact')
         contact_account = attrs.get('contact_account')
+
+        if 'internal_transaction' in attrs:
+            return attrs
 
         if not accounts_data:
             raise serializers.ValidationError("This field is required and cannot be empty.")

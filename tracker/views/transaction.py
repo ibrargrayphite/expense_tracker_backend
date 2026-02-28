@@ -175,10 +175,13 @@ class TransactionViewSet(mixins.CreateModelMixin,
         return response
 
     def get_queryset(self):
+        from django.db.models.functions import Coalesce
+        from django.db.models import DecimalField
+        from decimal import Decimal
         return Transaction.objects.filter(
             user=self.request.user
         ).annotate(
-            amount=Sum('accounts__splits__amount')
+            amount=Coalesce(Sum('accounts__splits__amount'), 'internal_transaction__amount', Decimal('0.0'), output_field=DecimalField())
         ).order_by('-date', '-created_at')
 
     @transaction.atomic
@@ -218,8 +221,19 @@ class InternalTransactionViewSet(mixins.CreateModelMixin,
     @transaction.atomic
     def perform_create(self, serializer):
         from django.db.models import F
+        from tracker.models import Transaction, Account
+        
         instance = serializer.save(user=self.request.user)
         
         # Update balances
         Account.objects.filter(id=instance.from_account.id).update(balance=F('balance') - instance.amount)
         Account.objects.filter(id=instance.to_account.id).update(balance=F('balance') + instance.amount)
+        
+        # Create corresponding Transaction record
+        tx = Transaction.objects.create(
+            user=self.request.user,
+            internal_transaction=instance,
+            date=instance.date
+        )
+        tx.created_at = instance.created_at
+        tx.save(update_fields=['created_at'])

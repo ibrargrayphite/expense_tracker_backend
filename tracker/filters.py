@@ -20,8 +20,8 @@ class ContactFilter(django_filters.FilterSet):
 class TransactionFilter(django_filters.FilterSet):
     start_date = django_filters.DateFilter(field_name="date", lookup_expr='gte')
     end_date = django_filters.DateFilter(field_name="date", lookup_expr='lte')
-    type = django_filters.CharFilter(field_name='accounts__splits__type', lookup_expr='exact')
-    account = django_filters.NumberFilter(field_name='accounts__account_id')
+    type = django_filters.CharFilter(method='filter_type')
+    account = django_filters.NumberFilter(method='filter_account')
     search = django_filters.CharFilter(method='filter_search')
     min_amount = django_filters.NumberFilter(method='filter_min_amount')
     max_amount = django_filters.NumberFilter(method='filter_max_amount')
@@ -32,18 +32,39 @@ class TransactionFilter(django_filters.FilterSet):
         model = Transaction
         fields = ['start_date', 'end_date', 'type', 'account', 'contact']
         
+    def filter_type(self, queryset, name, value):
+        from django.db.models import Q
+        if value == 'TRANSFER':
+            return queryset.filter(internal_transaction__isnull=False)
+        return queryset.filter(accounts__splits__type=value)
+        
+    def filter_account(self, queryset, name, value):
+        from django.db.models import Q
+        return queryset.filter(
+            Q(accounts__account_id=value) |
+            Q(internal_transaction__from_account_id=value) |
+            Q(internal_transaction__to_account_id=value)
+        ).distinct()
+        
     def filter_min_amount(self, queryset, name, value):
-        return queryset.filter(amount__gte=value)
+        from django.db.models import Q
+        return queryset.filter(
+            Q(amount__gte=value)
+        )
 
     def filter_max_amount(self, queryset, name, value):
-        return queryset.filter(amount__lte=value)
+        from django.db.models import Q
+        return queryset.filter(
+            Q(amount__lte=value)
+        )
         
     def filter_search(self, queryset, name, value):
         from django.db.models import Q
         return queryset.filter(
             Q(accounts__splits__note__icontains=value) |
             Q(contact__first_name__icontains=value) |
-            Q(contact__last_name__icontains=value)
+            Q(contact__last_name__icontains=value) |
+            Q(internal_transaction__note__icontains=value)
         ).distinct()
 
 class InternalTransactionFilter(django_filters.FilterSet):
