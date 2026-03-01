@@ -9,3 +9,4 @@ from .transaction import (
     TransactionAccountSerializer, 
     TransactionSplitSerializer
 )
+from .planned_expense import PlannedExpenseSerializer

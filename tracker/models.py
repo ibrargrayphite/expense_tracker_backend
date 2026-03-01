@@ -265,3 +265,35 @@ class TransactionSplit(models.Model):
 
     def __str__(self):
         return f"{self.type} - {self.amount}"
+
+
+class PlannedExpense(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='planned_expenses')
+    amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
+    start_date = models.DateField()
+    end_date = models.DateField()
+    category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name='planned_expenses')
+    note = models.TextField(blank=True, null=True)
+    is_completed = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['end_date']
+        indexes = [
+            models.Index(fields=['user', 'is_completed']),
+            models.Index(fields=['user', 'start_date', 'end_date']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=Q(end_date__gte=F('start_date')),
+                name='planned_expense_end_after_start'
+            ),
+            models.CheckConstraint(
+                check=Q(amount__gt=0),
+                name='planned_expense_amount_positive'
+            )
+        ]
+
+    def __str__(self):
+        return f"Planned: {self.amount} ({self.start_date} - {self.end_date})"

@@ -114,6 +114,8 @@ class ContactViewSet(viewsets.ModelViewSet):
         return Contact.objects.filter(user=self.request.user).order_by('first_name', 'last_name')
 
     def perform_create(self, serializer):
+        if Contact.objects.filter(user=self.request.user, first_name=serializer.validated_data['first_name'], last_name=serializer.validated_data['last_name']).exists():
+            raise ValidationError("A contact with this name already exists.")
         serializer.save(user=self.request.user)
 
     @extend_schema(
@@ -236,14 +238,12 @@ class ContactAccountViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         instance = self.get_object()
         if instance.bank_name.upper() == 'CASH':
-            raise ValidationError({"detail": "The system 'CASH' account cannot be modified."})
-        if ContactAccount.objects.filter(user=self.request.user, first_name=instance.first_name, last_name=instance.last_name).exclude(id=instance.id).exists():
-            raise ValidationError({"detail": "A contact with this name already exists."})
+            raise ValidationError("The system 'CASH' account cannot be modified.")
         serializer.save()
 
     def perform_destroy(self, instance):
         if instance.bank_name.upper() == 'CASH':
-            raise ValidationError({"detail": "The system 'CASH' account cannot be deleted."})
+            raise ValidationError("The system 'CASH' account cannot be deleted.")
         instance.delete()
 
     @extend_schema(
