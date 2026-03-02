@@ -6,9 +6,13 @@ from django.http import HttpResponse
 from tracker.models import InternalTransaction, Transaction, TransactionAccount, TransactionSplit, Loan, Account
 from tracker.serializers.transaction import InternalTransactionSerializer, TransactionSerializer
 from tracker.pagination import TransactionResultsSetPagination
+import io
+import requests
 import openpyxl
 from openpyxl.styles import Font, Alignment
+from openpyxl.drawing.image import Image as XLImage
 from django.db.models import Sum
+from django.conf import settings
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from tracker.filters import TransactionFilter, InternalTransactionFilter
@@ -219,7 +223,7 @@ class TransactionViewSet(mixins.CreateModelMixin,
         summary="Export transactions to Excel",
         description=(
             "Generates and downloads an Excel (.xlsx) file containing all transactions (both regular and internal transfers).\n\n"
-            "Columns: `Date`, `From`, `To`, `Type`, `Amount`, `Category`, `Note`\n\n"
+            "Columns: `Date`, `From`, `To`, `Type`, `Amount`, `Category`, `Note`, `Receipt`\n\n"
             "**Optional date filters:**\n"
             "- `start_date` – Include transactions from this date (YYYY-MM-DD)\n"
             "- `end_date` – Include transactions up to this date (YYYY-MM-DD)\n\n"
@@ -263,9 +267,10 @@ class TransactionViewSet(mixins.CreateModelMixin,
         ws = wb.active
         ws.title = "Transactions"
 
-        # Define Headers
-        headers = ["Date", "From", "To", "Type", "Amount", "Category", "Note"]
+        # Define Headers (Receipt is the last column)
+        headers = ["Date", "From", "To", "Type", "Amount", "Category", "Note", "Receipt"]
         ws.append(headers)
+        RECEIPT_COL = len(headers)  # 1-based column index for the Receipt column
 
         # Style Headers
         for cell in ws[1]:
@@ -275,7 +280,7 @@ class TransactionViewSet(mixins.CreateModelMixin,
         # Combine and Sort
         all_data = []
         
-        # Format Internal Transactions
+        # Format Internal Transactions (no image field)
         for it in it_qs:
             all_data.append({
                 'date': it.date,
@@ -285,7 +290,8 @@ class TransactionViewSet(mixins.CreateModelMixin,
                 'type': "Transfer",
                 'amount': float(it.amount),
                 'category': "-",
-                'note': it.note or "-"
+                'note': it.note or "-",
+                'image': None,
             })
 
         # Format Regular Transactions
@@ -337,35 +343,78 @@ class TransactionViewSet(mixins.CreateModelMixin,
                 'type': tx_type.replace('_', ' ').title(),
                 'amount': float(total_amt),
                 'category': category,
-                'note': first_split.note if first_split else "-"
+                'note': first_split.note if first_split else "-",
+                'image': tx.image if tx.image else None,
             })
 
         # Sort combined data by date (newest first)
         all_data.sort(key=lambda x: (x['date'], x['created_at']), reverse=True)
 
-        # Append to Sheet
-        for row in all_data:
+        # Image display size in the Excel cell (pixels)
+        IMG_WIDTH = 120
+        IMG_HEIGHT = 90
+        ROW_HEIGHT = 75  # in Excel points (~1pt ≈ 1px for row height)
+        COL_WIDTH = 20   # in Excel character-width units
+
+        # Append rows and embed images
+        for row_data in all_data:
+            excel_row = ws.max_row + 1
             ws.append([
-                row['date'].strftime("%Y-%m-%d %H:%M"),
-                row['from'],
-                row['to'],
-                row['type'],
-                row['amount'],
-                row['category'],
-                row['note']
+                row_data['date'].strftime("%Y-%m-%d %H:%M"),
+                row_data['from'],
+                row_data['to'],
+                row_data['type'],
+                row_data['amount'],
+                row_data['category'],
+                row_data['note'],
+                None,  # Receipt cell – filled by image below if available
             ])
 
-        # Auto-adjust column width
+            image_field = row_data.get('image')
+            if image_field:
+                img_bytes = None
+                try:
+                    if getattr(settings, 'ENVIRONMENT', 'development') == 'production':
+                        # Production: fetch from Cloudinary URL
+                        url = image_field.url
+                        resp = requests.get(url, timeout=10)
+                        resp.raise_for_status()
+                        img_bytes = io.BytesIO(resp.content)
+                    else:
+                        # Development: read from local filesystem
+                        img_bytes = io.BytesIO(image_field.read())
+                except Exception:
+                    img_bytes = None
+
+                if img_bytes:
+                    xl_img = XLImage(img_bytes)
+                    xl_img.width = IMG_WIDTH
+                    xl_img.height = IMG_HEIGHT
+                    # Anchor top-left corner of the image to the Receipt cell
+                    from openpyxl.utils import get_column_letter
+                    cell_anchor = f"{get_column_letter(RECEIPT_COL)}{excel_row}"
+                    ws.add_image(xl_img, cell_anchor)
+                    # Give the row enough height to show the image
+                    ws.row_dimensions[excel_row].height = ROW_HEIGHT
+
+        # Set Receipt column width to comfortably hold the embedded image
+        from openpyxl.utils import get_column_letter
+        ws.column_dimensions[get_column_letter(RECEIPT_COL)].width = COL_WIDTH
+
+        # Auto-adjust other column widths (skip Receipt column)
         for column in ws.columns:
+            col_letter = column[0].column_letter
+            if col_letter == get_column_letter(RECEIPT_COL):
+                continue  # already set above
             max_length = 0
-            column_letter = column[0].column_letter
             for cell in column:
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
+                    val = cell.value
+                    if val is not None and len(str(val)) > max_length:
+                        max_length = len(str(val))
+                except Exception:
                     pass
-            ws.column_dimensions[column_letter].width = max_length + 2
+            ws.column_dimensions[col_letter].width = max_length + 2
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename=transactions.xlsx'
