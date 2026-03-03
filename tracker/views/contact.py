@@ -148,6 +148,27 @@ class ContactViewSet(viewsets.ModelViewSet):
             raise ValidationError("A contact with this name already exists.")
         serializer.save(user=self.request.user)
 
+    def list(self, request, *args, **kwargs):
+        from django.core.cache import cache
+        from tracker.cache import contacts_list_key, CACHE_TTL
+
+        _FILTER_PARAMS = {'first_name', 'last_name', 'phone1', 'net_balance', 'search', 'ordering', 'page'}
+        has_filters = any(request.query_params.get(k) for k in _FILTER_PARAMS)
+
+        if not has_filters:
+            cache_key = contacts_list_key(request.user.id)
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+
+        response = super().list(request, *args, **kwargs)
+
+        if not has_filters:
+            cache.set(cache_key, response.data, CACHE_TTL)
+
+        return response
+
+
     @extend_schema(
         tags=["Contacts"],
         summary="List contacts for dropdown",

@@ -188,6 +188,47 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# ── Cache ──────────────────────────────────────────────────────────────────
+# Switch backends via .env: CACHE_BACKEND=locmem | memcached | redis
+CACHE_BACKEND = config('CACHE_BACKEND', default='locmem')
+CACHE_TTL     = config('CACHE_TTL', default=300, cast=int)
+
+if CACHE_BACKEND == 'redis':
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'SOCKET_CONNECT_TIMEOUT': 5,
+                'SOCKET_TIMEOUT': 5,
+                'IGNORE_EXCEPTIONS': True,  # degrade gracefully if Redis is down
+            },
+            'KEY_PREFIX': 'xpense',
+        }
+    }
+elif CACHE_BACKEND == 'memcached':
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
+            'LOCATION': config('MEMCACHED_LOCATION', default='127.0.0.1:11211'),
+            'OPTIONS': {
+                'no_delay': True,
+                'ignore_exc': True,         # degrade gracefully if Memcached is down
+                'connect_timeout': 2,
+            },
+            'KEY_PREFIX': 'xpense',
+        }
+    }
+else:
+    # Default: LocMemCache — zero external dependencies, ideal for dev/CI
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'xpense-locmem',
+        }
+    }
+
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

@@ -48,6 +48,27 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    def list(self, request, *args, **kwargs):
+        from django.core.cache import cache
+        from tracker.cache import planned_expenses_list_key, CACHE_TTL
+
+        _FILTER_PARAMS = {'status', 'category', 'ordering', 'page'}
+        has_filters = any(request.query_params.get(k) for k in _FILTER_PARAMS)
+
+        if not has_filters:
+            cache_key = planned_expenses_list_key(request.user.id)
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+
+        response = super().list(request, *args, **kwargs)
+
+        if not has_filters:
+            cache.set(cache_key, response.data, CACHE_TTL)
+
+        return response
+
+
     def perform_update(self, serializer):
         is_completed = serializer.validated_data.get('is_completed')
         if is_completed:

@@ -3,8 +3,9 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.contrib.auth.models import User
 from .models import (
-    Account, ExpenseCategory, TransactionAccount, 
-    Transaction, TransactionSplit, Loan, InternalTransaction, ContactAccount, Contact
+    Account, ExpenseCategory, TransactionAccount,
+    Transaction, TransactionSplit, Loan, InternalTransaction, ContactAccount, Contact,
+    PlannedExpense
 )
 
 @receiver(post_save, sender=User)
@@ -60,3 +61,40 @@ def create_contact_account(sender, instance, created, **kwargs):
             account_name=f"{instance.first_name} {instance.last_name}",
             account_number="Physical Cash",
         )
+
+
+# ── Cache Invalidation ────────────────────────────────────────────────────────
+
+from tracker.cache import (
+    invalidate_user_transactions,
+    invalidate_user_contacts,
+    invalidate_user_accounts,
+    invalidate_user_loans,
+    invalidate_user_planned_expenses,
+)
+
+@receiver([post_save, post_delete], sender=Transaction)
+def on_transaction_change(sender, instance, **kwargs):
+    invalidate_user_transactions(instance.user_id)
+
+@receiver([post_save, post_delete], sender=InternalTransaction)
+def on_internal_transaction_change(sender, instance, **kwargs):
+    invalidate_user_transactions(instance.user_id)
+
+@receiver([post_save, post_delete], sender=Account)
+def on_account_change(sender, instance, **kwargs):
+    # Accounts surface inside transaction data too — bust both
+    invalidate_user_accounts(instance.user_id)
+
+@receiver([post_save, post_delete], sender=Contact)
+def on_contact_change(sender, instance, **kwargs):
+    invalidate_user_contacts(instance.user_id)
+
+@receiver([post_save, post_delete], sender=Loan)
+def on_loan_change(sender, instance, **kwargs):
+    invalidate_user_loans(instance.user_id)
+
+@receiver([post_save, post_delete], sender=PlannedExpense)
+def on_planned_expense_change(sender, instance, **kwargs):
+    invalidate_user_planned_expenses(instance.user_id)
+

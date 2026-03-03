@@ -112,6 +112,26 @@ class AccountViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Account.objects.filter(user=self.request.user).select_related('user').order_by('-created_at')
 
+    def list(self, request, *args, **kwargs):
+        from django.core.cache import cache
+        from tracker.cache import accounts_list_key, CACHE_TTL
+
+        _FILTER_PARAMS = {'bank_name', 'min_balance', 'max_balance', 'search', 'ordering', 'page'}
+        has_filters = any(request.query_params.get(k) for k in _FILTER_PARAMS)
+
+        if not has_filters:
+            cache_key = accounts_list_key(request.user.id)
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+
+        response = super().list(request, *args, **kwargs)
+
+        if not has_filters:
+            cache.set(cache_key, response.data, CACHE_TTL)
+
+        return response
+
     @extend_schema(
         tags=["Accounts"],
         summary="List accounts for dropdown",

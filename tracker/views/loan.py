@@ -72,6 +72,26 @@ class LoanViewSet(mixins.ListModelMixin,
             user=self.request.user
         ).select_related('contact').order_by('-created_at')
 
+    def list(self, request, *args, **kwargs):
+        from django.core.cache import cache
+        from tracker.cache import loans_list_key, CACHE_TTL
+
+        _FILTER_PARAMS = {'type', 'contact', 'status', 'min_amount', 'max_amount', 'search', 'ordering', 'page'}
+        has_filters = any(request.query_params.get(k) for k in _FILTER_PARAMS)
+
+        if not has_filters:
+            cache_key = loans_list_key(request.user.id)
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+
+        response = super().list(request, *args, **kwargs)
+
+        if not has_filters:
+            cache.set(cache_key, response.data, CACHE_TTL)
+
+        return response
+
     @extend_schema(
         tags=["Loans"],
         summary="List loans for dropdown",

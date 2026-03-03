@@ -463,6 +463,32 @@ class TransactionViewSet(mixins.CreateModelMixin,
         except Exception as e:
             raise ValidationError({'detail': str(e)})
 
+    def list(self, request, *args, **kwargs):
+        from django.core.cache import cache
+        from tracker.cache import transactions_list_key, CACHE_TTL
+
+        # Only cache plain, unfiltered first-page requests
+        _FILTER_PARAMS = {
+            'type', 'account', 'contact', 'expense_category',
+            'income_source', 'start_date', 'end_date',
+            'min_amount', 'max_amount', 'search', 'ordering', 'page',
+        }
+        has_filters = any(request.query_params.get(k) for k in _FILTER_PARAMS)
+
+        if not has_filters:
+            cache_key = transactions_list_key(request.user.id)
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
+
+        response = super().list(request, *args, **kwargs)
+
+        if not has_filters:
+            cache.set(cache_key, response.data, CACHE_TTL)
+
+        return response
+
+
 
 @extend_schema_view(
     list=extend_schema(
