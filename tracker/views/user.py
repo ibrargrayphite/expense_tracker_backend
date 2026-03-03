@@ -300,36 +300,10 @@ class UserViewSet(viewsets.ModelViewSet):
             ),
         },
     )
-    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
-    def forgot_password(self, request):
-        email = request.data.get('email')
-        if not email:
-            return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+    async def _send_reset_email(self, email, subject, html_content, reset_url, user_id):
+        """Helper to send reset email in the background."""
         try:
-            user = User.objects.filter(email=email).first()
-            if not user:
-                logger.warning("Password reset requested for unknown email: %s", email)
-                return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
-                
-            token = default_token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            
-            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-            params = urlencode({'uid': uid, 'token': token})
-            reset_url = f"{frontend_url}/reset-password?{params}"
-
-            subject = "Reset Your XPENSE Password"
-            html_content = f"""
-                                <p>Hello,</p>
-                                <p>Click the button below to reset your password:</p>
-                                <p>
-                                    <a href="{reset_url}" style="padding:10px 15px;background:#4f46e5;color:white;text-decoration:none;border-radius:5px;">
-                                        Reset Password
-                                    </a>
-                                </p>
-                                <p>If you didn't request this, you can ignore this email.</p>
-                            """
-            
+            from asgiref.sync import sync_to_async
             if SendGridAPIClient and getattr(settings, 'SENDGRID_API_KEY', None):
                 email_message = Mail(
                     from_email=settings.DEFAULT_FROM_EMAIL,
@@ -338,21 +312,81 @@ class UserViewSet(viewsets.ModelViewSet):
                     html_content=html_content
                 )
                 sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
-                sg.client.mail.send.post(request_body=email_message.get())
+                # sg.client.mail.send.post is blocking, so we wrap it
+                await sync_to_async(sg.client.mail.send.post)(request_body=email_message.get())
             else:
-                send_mail(
+                await sync_to_async(send_mail)(
                     subject,
                     "Reset your password here: " + reset_url,
                     settings.DEFAULT_FROM_EMAIL,
                     [email],
                     html_message=html_content
                 )
-
-            logger.info("Password reset email sent to user %s (id=%s)", email, user.id)
-            return Response({"detail": "Password reset link sent to your email."})
+            logger.info("Password reset email sent to %s (id=%s)", email, user_id)
         except Exception as e:
-            logger.error("Password reset error for email %s: %s", email, e, exc_info=True)
-            return Response({'detail': 'An error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error("Background email send failed for %s: %s", email, e, exc_info=True)
+
+    @extend_schema(
+        tags=["Auth"],
+        summary="Request a password reset link",
+        description=(
+            "Sends a password reset email to the user if they exist. Use this if the user "
+            "has forgotten their password and needs to regain access.\n\n"
+            "This endpoint is **public** (no authentication required). **Returns 200 even if "
+            "user is not found** to prevent email enumeration (though it logs a warning)."
+        ),
+        request=inline_serializer(name="ForgotPasswordRequest", fields={"email": drf_serializers.EmailField()}),
+        responses={
+            200: OpenApiResponse(
+                description="Email sent (or hidden user-not-found).",
+                examples=[OpenApiExample("Success", value={"detail": "Password reset link sent to your email."})],
+            ),
+            400: OpenApiResponse(
+                description="Email is missing from request data.",
+                examples=[OpenApiExample("Missing email", value={"detail": "Email is required."})],
+            ),
+        },
+    )
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    async def forgot_password(self, request):
+        from asgiref.sync import sync_to_async
+        import asyncio
+        
+        email = request.data.get('email')
+        if not email:
+            return Response({"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Wrap ORM call
+        user = await sync_to_async(lambda: User.objects.filter(email=email).first())()
+        
+        if not user:
+            logger.warning("Password reset requested for unknown email: %s", email)
+            # Return 200 anyway to prevent user enumeration
+            return Response({"detail": "Password reset link sent to your email."})
+            
+        token = await sync_to_async(default_token_generator.make_token)(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        params = urlencode({'uid': uid, 'token': token})
+        reset_url = f"{frontend_url}/reset-password?{params}"
+
+        subject = "Reset Your XPENSE Password"
+        html_content = f"""
+                            <p>Hello,</p>
+                            <p>Click the button below to reset your password:</p>
+                            <p>
+                                <a href="{reset_url}" style="padding:10px 15px;background:#4f46e5;color:white;text-decoration:none;border-radius:5px;">
+                                    Reset Password
+                                </a>
+                            </p>
+                            <p>If you didn't request this, you can ignore this email.</p>
+                        """
+
+        # Fire and forget
+        asyncio.create_task(self._send_reset_email(email, subject, html_content, reset_url, user.id))
+        
+        return Response({"detail": "Password reset link sent to your email."})
 
     @extend_schema(
         tags=["Auth"],

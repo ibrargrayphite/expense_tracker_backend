@@ -239,40 +239,79 @@ class TransactionViewSet(mixins.CreateModelMixin,
             200: OpenApiResponse(description="Excel file download."),
         },
     )
+    async def _fetch_transaction_image(self, client, url):
+        """Helper to fetch a single image asynchronously."""
+        try:
+            resp = await client.get(url, timeout=10)
+            resp.raise_for_status()
+            return io.BytesIO(resp.content)
+        except Exception as e:
+            logger.error("Failed to fetch image from %s: %s", url, e)
+            return None
+
+    @extend_schema(
+        tags=["Transactions"],
+        summary="Export transactions to Excel",
+        description=(
+            "Generates an Excel (`.xlsx`) file containing all transactions and internal transfers.\n\n"
+            "**Async Features:**\n"
+            "- Parallel image fetching from Cloudinary (production).\n"
+            "- Non-blocking event loop during I/O.\n\n"
+            "**Optional Filters:**\n"
+            "- `start_date` – Include transactions from this date (YYYY-MM-DD)\n"
+            "- `end_date` – Include transactions up to this date (YYYY-MM-DD)\n\n"
+            "Returns a file download with `Content-Disposition: attachment; filename=transactions.xlsx`."
+        ),
+        parameters=[
+            OpenApiParameter("start_date", OpenApiTypes.DATE, description="Export from this date (YYYY-MM-DD)."),
+            OpenApiParameter("end_date", OpenApiTypes.DATE, description="Export up to this date (YYYY-MM-DD)."),
+        ],
+        responses={
+            200: OpenApiResponse(description="Excel file download."),
+        },
+    )
     @action(detail=False, methods=['get'])
-    def export_excel(self, request):
+    async def export_excel(self, request):
+        from asgiref.sync import sync_to_async
+        import httpx
+        import asyncio
+        
         user = request.user
         
         # Get date filter params if any
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
 
-        # Fetch Transactions
-        tx_qs = Transaction.objects.filter(user=user).prefetch_related(
-            'accounts__account', 
-            'accounts__splits',
-            'contact',
-            'contact_account'
-        )
-        if start_date: tx_qs = tx_qs.filter(date__gte=start_date)
-        if end_date: tx_qs = tx_qs.filter(date__lte=end_date)
-        tx_qs = tx_qs.order_by('-date', '-created_at')
+        # Fetch Transactions (wrapped in sync_to_async)
+        def get_transactions():
+            qs = Transaction.objects.filter(user=user).prefetch_related(
+                'accounts__account', 
+                'accounts__splits',
+                'contact',
+                'contact_account'
+            )
+            if start_date: qs = qs.filter(date__gte=start_date)
+            if end_date: qs = qs.filter(date__lte=end_date)
+            return list(qs.order_by('-date', '-created_at'))
 
-        # Fetch Internal Transactions
-        it_qs = InternalTransaction.objects.filter(user=user).select_related('from_account', 'to_account')
-        if start_date: it_qs = it_qs.filter(date__gte=start_date)
-        if end_date: it_qs = it_qs.filter(date__lte=end_date)
-        it_qs = it_qs.order_by('-date', '-created_at')
+        def get_internal_transactions():
+            qs = InternalTransaction.objects.filter(user=user).select_related('from_account', 'to_account')
+            if start_date: qs = qs.filter(date__gte=start_date)
+            if end_date: qs = qs.filter(date__lte=end_date)
+            return list(qs.order_by('-date', '-created_at'))
+
+        tx_list = await sync_to_async(get_transactions)()
+        it_list = await sync_to_async(get_internal_transactions)()
 
         # Create Workbook
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Transactions"
 
-        # Define Headers (Receipt is the last column)
+        # Define Headers
         headers = ["Date", "From", "To", "Type", "Amount", "Category", "Note", "Receipt"]
         ws.append(headers)
-        RECEIPT_COL = len(headers)  # 1-based column index for the Receipt column
+        RECEIPT_COL = len(headers)
 
         # Style Headers
         for cell in ws[1]:
@@ -282,8 +321,8 @@ class TransactionViewSet(mixins.CreateModelMixin,
         # Combine and Sort
         all_data = []
         
-        # Format Internal Transactions (no image field)
-        for it in it_qs:
+        # Internal Transactions
+        for it in it_list:
             all_data.append({
                 'date': it.date,
                 'created_at': it.created_at,
@@ -293,18 +332,14 @@ class TransactionViewSet(mixins.CreateModelMixin,
                 'amount': float(it.amount),
                 'category': "-",
                 'note': it.note or "-",
-                'image': None,
+                'image_url': None,
+                'image_field': None,
             })
 
-        # Format Regular Transactions
-        for tx in tx_qs:
+        # Regular Transactions
+        # We need to calculate amount via aggregate - let's do it in sync helper
+        def get_tx_data(tx):
             total_amt = tx.accounts.aggregate(total=Sum('splits__amount'))['total'] or 0
-            
-            # Logic for From/To
-            from_display = "-"
-            to_display = "-"
-            
-            # Get details from first split for type/category
             first_split = None
             for acc in tx.accounts.all():
                 if acc.splits.exists():
@@ -325,19 +360,17 @@ class TransactionViewSet(mixins.CreateModelMixin,
                 contact_acc = f"{tx.contact.first_name} {tx.contact.last_name}"
 
             if tx_type == 'EXPENSE':
-                from_display = user_accounts
-                to_display = "-"
+                from_display, to_display = user_accounts, "-"
             elif tx_type == 'INCOME':
-                from_display = "-"
-                to_display = user_accounts
+                from_display, to_display = "-", user_accounts
             elif tx_type in ['LOAN_TAKEN', 'REIMBURSEMENT']:
-                from_display = contact_acc
-                to_display = user_accounts
+                from_display, to_display = contact_acc, user_accounts
             elif tx_type in ['LOAN_REPAYMENT', 'MONEY_LENT']:
-                from_display = user_accounts
-                to_display = contact_acc
+                from_display, to_display = user_accounts, contact_acc
+            else:
+                from_display, to_display = "-", "-"
 
-            all_data.append({
+            return {
                 'date': tx.date,
                 'created_at': tx.created_at,
                 'from': from_display,
@@ -346,20 +379,44 @@ class TransactionViewSet(mixins.CreateModelMixin,
                 'amount': float(total_amt),
                 'category': category,
                 'note': first_split.note if first_split else "-",
-                'image': tx.image if tx.image else None,
-            })
+                'image_url': tx.image.url if tx.image else None,
+                'image_field': tx.image if tx.image else None,
+            }
 
-        # Sort combined data by date (newest first)
+        for tx in tx_list:
+            all_data.append(await sync_to_async(get_tx_data)(tx))
+
+        # Sort newest first
         all_data.sort(key=lambda x: (x['date'], x['created_at']), reverse=True)
 
-        # Image display size in the Excel cell (pixels)
-        IMG_WIDTH = 120
-        IMG_HEIGHT = 90
-        ROW_HEIGHT = 75  # in Excel points (~1pt ≈ 1px for row height)
-        COL_WIDTH = 20   # in Excel character-width units
+        # Parallel Image Fetching
+        image_bytes_map = {}
+        is_prod = getattr(settings, 'ENVIRONMENT', 'development') == 'production'
+        
+        if any(d['image_url'] or d['image_field'] for d in all_data):
+            async with httpx.AsyncClient() as client:
+                fetch_tasks = []
+                # Map task result back to index
+                task_to_idx = []
+                
+                for idx, row in enumerate(all_data):
+                    if is_prod and row['image_url']:
+                        fetch_tasks.append(self._fetch_transaction_image(client, row['image_url']))
+                        task_to_idx.append(idx)
+                    elif not is_prod and row['image_field']:
+                        # Local file read is sync but blocking; we wrap it
+                        fetch_tasks.append(sync_to_async(lambda field: io.BytesIO(field.read()))(row['image_field']))
+                        task_to_idx.append(idx)
+                
+                if fetch_tasks:
+                    results = await asyncio.gather(*fetch_tasks)
+                    for idx, img_bytes in zip(task_to_idx, results):
+                        image_bytes_map[idx] = img_bytes
 
         # Append rows and embed images
-        for row_data in all_data:
+        IMG_WIDTH, IMG_HEIGHT, ROW_HEIGHT, COL_WIDTH = 120, 90, 75, 20
+        
+        for idx, row_data in enumerate(all_data):
             excel_row = ws.max_row + 1
             ws.append([
                 row_data['date'].strftime("%Y-%m-%d %H:%M"),
@@ -369,58 +426,35 @@ class TransactionViewSet(mixins.CreateModelMixin,
                 row_data['amount'],
                 row_data['category'],
                 row_data['note'],
-                None,  # Receipt cell – filled by image below if available
+                None,
             ])
 
-            image_field = row_data.get('image')
-            if image_field:
-                img_bytes = None
+            img_bytes = image_bytes_map.get(idx)
+            if img_bytes:
                 try:
-                    if getattr(settings, 'ENVIRONMENT', 'development') == 'production':
-                        # Production: fetch from Cloudinary URL
-                        url = image_field.url
-                        resp = requests.get(url, timeout=10)
-                        resp.raise_for_status()
-                        img_bytes = io.BytesIO(resp.content)
-                    else:
-                        # Development: read from local filesystem
-                        img_bytes = io.BytesIO(image_field.read())
-                except Exception:
-                    img_bytes = None
-
-                if img_bytes:
+                    img_bytes.seek(0)
                     xl_img = XLImage(img_bytes)
-                    xl_img.width = IMG_WIDTH
-                    xl_img.height = IMG_HEIGHT
-                    # Anchor top-left corner of the image to the Receipt cell
+                    xl_img.width, xl_img.height = IMG_WIDTH, IMG_HEIGHT
                     from openpyxl.utils import get_column_letter
                     cell_anchor = f"{get_column_letter(RECEIPT_COL)}{excel_row}"
                     ws.add_image(xl_img, cell_anchor)
-                    # Give the row enough height to show the image
                     ws.row_dimensions[excel_row].height = ROW_HEIGHT
+                except Exception as e:
+                    logger.error("Failed to embed image in Excel for row %s: %s", excel_row, e)
 
-        # Set Receipt column width to comfortably hold the embedded image
+        # Auto-adjust columns
         from openpyxl.utils import get_column_letter
         ws.column_dimensions[get_column_letter(RECEIPT_COL)].width = COL_WIDTH
-
-        # Auto-adjust other column widths (skip Receipt column)
         for column in ws.columns:
             col_letter = column[0].column_letter
-            if col_letter == get_column_letter(RECEIPT_COL):
-                continue  # already set above
-            max_length = 0
-            for cell in column:
-                try:
-                    val = cell.value
-                    if val is not None and len(str(val)) > max_length:
-                        max_length = len(str(val))
-                except Exception:
-                    pass
+            if col_letter == get_column_letter(RECEIPT_COL): continue
+            max_length = max((len(str(cell.value or "")) for cell in column), default=0)
             ws.column_dimensions[col_letter].width = max_length + 2
 
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename=transactions.xlsx'
-        wb.save(response)
+        # wb.save is blocking; wrap it
+        await sync_to_async(wb.save)(response)
         return response
 
     def get_queryset(self):
