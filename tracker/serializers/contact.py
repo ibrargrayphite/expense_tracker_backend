@@ -30,20 +30,28 @@ class ContactSerializer(serializers.ModelSerializer):
         return LoanSerializer(obj.loans.all(), many=True).data
 
     def get_transactions(self, obj):
-        # We might need a proper transaction serializer here, but for now we can do a simple list
-        # or use a simplified version to avoid circular imports
         from tracker.serializers.transaction import TransactionSerializer
-        return TransactionSerializer(obj.transactions.all().order_by('-date')[:10], many=True).data
+        # Use to_attr prefetch set by the view; fall back to a limited queryset
+        transactions = getattr(obj, 'prefetched_transactions', None)
+        if transactions is None:
+            transactions = obj.transactions.all().order_by('-date')[:10]
+        else:
+            transactions = transactions[:10]
+        return TransactionSerializer(transactions, many=True, context=self.context).data
 
     def get_loan_stats(self, obj):
-        loans = obj.loans.all()
-        total_loaned = loans.filter(type='TAKEN').aggregate(Sum('remaining_amount'))['remaining_amount__sum'] or Decimal('0.00')
-        total_lent = loans.filter(type='LENT').aggregate(Sum('remaining_amount'))['remaining_amount__sum'] or Decimal('0.00')
-        
+        # Use prefetched loans — no extra aggregate queries
+        loans = list(obj.loans.all())
+        total_loaned = sum(
+            (l.remaining_amount for l in loans if l.type == 'TAKEN'), Decimal('0.00')
+        )
+        total_lent = sum(
+            (l.remaining_amount for l in loans if l.type == 'LENT'), Decimal('0.00')
+        )
         return {
             'total_loaned': float(total_loaned),
             'total_lent': float(total_lent),
-            'net_balance': float(total_lent - total_loaned)
+            'net_balance': float(total_lent - total_loaned),
         }
 
     def validate_first_name(self, value):

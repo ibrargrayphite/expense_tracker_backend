@@ -423,12 +423,35 @@ class TransactionViewSet(mixins.CreateModelMixin,
 
     def get_queryset(self):
         from django.db.models.functions import Coalesce
-        from django.db.models import DecimalField
+        from django.db.models import DecimalField, Prefetch
         from decimal import Decimal
         return Transaction.objects.filter(
             user=self.request.user
+        ).select_related(
+            'contact',
+            'contact_account',
+            'internal_transaction',
+            'internal_transaction__from_account',
+            'internal_transaction__to_account',
+        ).prefetch_related(
+            Prefetch(
+                'accounts',
+                queryset=TransactionAccount.objects.select_related('account').prefetch_related(
+                    Prefetch(
+                        'splits',
+                        queryset=TransactionSplit.objects.select_related(
+                            'expense_category', 'income_source', 'loan', 'loan__contact'
+                        )
+                    )
+                )
+            )
         ).annotate(
-            amount=Coalesce(Sum('accounts__splits__amount'), 'internal_transaction__amount', Decimal('0.0'), output_field=DecimalField())
+            amount=Coalesce(
+                Sum('accounts__splits__amount'),
+                'internal_transaction__amount',
+                Decimal('0.0'),
+                output_field=DecimalField()
+            )
         ).order_by('-date', '-created_at')
 
     @transaction.atomic
@@ -533,7 +556,7 @@ class InternalTransactionViewSet(mixins.CreateModelMixin,
     def get_queryset(self):
         return InternalTransaction.objects.filter(
             user=self.request.user
-        ).order_by('-date', '-created_at')
+        ).select_related('from_account', 'to_account').order_by('-date', '-created_at')
 
     @transaction.atomic
     def perform_create(self, serializer):

@@ -5,7 +5,7 @@ from tracker.models import (
     ExpenseCategory, IncomeSource
 )
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import F, Sum
 
 class InternalTransactionSerializer(serializers.ModelSerializer):
     from_account_name = serializers.CharField(source='from_account.account_name', read_only=True)
@@ -138,31 +138,45 @@ class TransactionSerializer(serializers.ModelSerializer):
             return f"{obj.contact.first_name} {obj.contact.last_name}"
         return None
 
+    def _first_split(self, obj):
+        """Return the first TransactionSplit from prefetched data — zero extra DB queries."""
+        for ta in obj.accounts.all():
+            for split in ta.splits.all():
+                return split
+        return None
+
     def get_total_amount(self, obj):
-        total = TransactionSplit.objects.filter(
-            transaction_account__transaction=obj
-        ).aggregate(Sum('amount'))['amount__sum']
-        return total or 0
+        """Sum all split amounts from prefetched data — zero extra DB queries."""
+        # If annotated on the queryset use that; fall back to in-memory sum
+        annotated = getattr(obj, 'amount', None)
+        if annotated is not None:
+            return annotated
+        return sum(
+            split.amount
+            for ta in obj.accounts.all()
+            for split in ta.splits.all()
+        ) or 0
 
     def get_expense_category_name(self, obj):
-        first_split = TransactionSplit.objects.filter(
-            transaction_account__transaction=obj,
-            expense_category__isnull=False
-        ).select_related('expense_category').first()
-        return first_split.expense_category.name if first_split else None
+        """Reads from prefetched splits — zero extra DB queries."""
+        for ta in obj.accounts.all():
+            for split in ta.splits.all():
+                if split.expense_category:
+                    return split.expense_category.name
+        return None
 
     def get_income_source_name(self, obj):
-        first_split = TransactionSplit.objects.filter(
-            transaction_account__transaction=obj,
-            income_source__isnull=False
-        ).select_related('income_source').first()
-        return first_split.income_source.name if first_split else None
+        """Reads from prefetched splits — zero extra DB queries."""
+        for ta in obj.accounts.all():
+            for split in ta.splits.all():
+                if split.income_source:
+                    return split.income_source.name
+        return None
 
     def get_note(self, obj):
-        first_split = TransactionSplit.objects.filter(
-            transaction_account__transaction=obj
-        ).first()
-        return first_split.note if first_split else None
+        """Reads from prefetched splits — zero extra DB queries."""
+        s = self._first_split(obj)
+        return s.note if s else None
 
     def validate(self, attrs):
         """
@@ -245,6 +259,7 @@ class TransactionSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """
         Handle nested creation of accounts and splits, and update associated records.
+        Uses atomic F() expressions for balance updates to prevent race conditions.
         """
         accounts_data = validated_data.pop('accounts')
         user = self.context['request'].user
@@ -293,11 +308,11 @@ class TransactionSerializer(serializers.ModelSerializer):
                     loan.is_closed = (loan.remaining_amount <= 0)
                     loan.save()
                 
-                # 6. Update Account Balance
+                # 6. Update Account Balance atomically using F() expressions
+                # This prevents race conditions if two requests update the same account simultaneously
                 if stype in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
-                    account.balance += amount
+                    Account.objects.filter(pk=account.pk).update(balance=F('balance') + amount)
                 else:
-                    account.balance -= amount
-                account.save()
+                    Account.objects.filter(pk=account.pk).update(balance=F('balance') - amount)
                 
         return transaction_instance

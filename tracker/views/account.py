@@ -110,7 +110,7 @@ class AccountViewSet(viewsets.ModelViewSet):
     ordering_fields = ['balance', 'account_name', 'created_at', 'bank_name']
 
     def get_queryset(self):
-        return Account.objects.filter(user=self.request.user).order_by('-created_at')
+        return Account.objects.filter(user=self.request.user).select_related('user').order_by('-created_at')
 
     @extend_schema(
         tags=["Accounts"],

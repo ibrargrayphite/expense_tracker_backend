@@ -111,7 +111,37 @@ class ContactViewSet(viewsets.ModelViewSet):
     ordering = ['first_name', 'last_name']
 
     def get_queryset(self):
-        return Contact.objects.filter(user=self.request.user).order_by('first_name', 'last_name')
+        from django.db.models import Prefetch
+        from tracker.models import Loan, Transaction, TransactionAccount, TransactionSplit
+        return Contact.objects.filter(
+            user=self.request.user
+        ).prefetch_related(
+            'accounts',
+            Prefetch('loans', queryset=Loan.objects.select_related('contact')),
+            Prefetch(
+                'transactions',
+                queryset=Transaction.objects.select_related(
+                    'contact',
+                    'contact_account',
+                    'internal_transaction',
+                    'internal_transaction__from_account',
+                    'internal_transaction__to_account',
+                ).prefetch_related(
+                    Prefetch(
+                        'accounts',
+                        queryset=TransactionAccount.objects.select_related('account').prefetch_related(
+                            Prefetch(
+                                'splits',
+                                queryset=TransactionSplit.objects.select_related(
+                                    'expense_category', 'income_source', 'loan', 'loan__contact'
+                                )
+                            )
+                        )
+                    )
+                ).order_by('-date'),
+                to_attr='prefetched_transactions'
+            ),
+        ).order_by('first_name', 'last_name')
 
     def perform_create(self, serializer):
         if Contact.objects.filter(user=self.request.user, first_name=serializer.validated_data['first_name'], last_name=serializer.validated_data['last_name']).exists():

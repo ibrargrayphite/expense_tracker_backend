@@ -243,6 +243,12 @@ class TransactionAccount(models.Model):
     transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='accounts')
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='transaction_accounts')
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["transaction"]),
+            models.Index(fields=["account"]),
+        ]
+
     def __str__(self):
         return f"{self.transaction} - {self.account}"
 
@@ -256,6 +262,13 @@ class TransactionSplit(models.Model):
     income_source = models.ForeignKey(IncomeSource, null=True, blank=True, on_delete=models.SET_NULL, related_name='transaction_splits')
 
     class Meta:
+        indexes = [
+            models.Index(fields=["transaction_account"]),
+            models.Index(fields=["type"]),
+            models.Index(fields=["expense_category"]),
+            models.Index(fields=["income_source"]),
+            models.Index(fields=["loan"]),
+        ]
         constraints = [
             models.CheckConstraint(
                 check=Q(amount__gt=0),

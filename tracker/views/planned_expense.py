@@ -23,7 +23,7 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        qs = PlannedExpense.objects.filter(user=self.request.user)
+        qs = PlannedExpense.objects.filter(user=self.request.user).select_related('category')
         today = timezone.localdate()
 
         status = self.request.query_params.get('status')

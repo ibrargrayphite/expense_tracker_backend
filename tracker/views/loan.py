@@ -68,7 +68,9 @@ class LoanViewSet(mixins.ListModelMixin,
     ordering_fields = ['remaining_amount', 'created_at', 'contact__first_name']
 
     def get_queryset(self):
-        return Loan.objects.filter(user=self.request.user).order_by('-created_at')
+        return Loan.objects.filter(
+            user=self.request.user
+        ).select_related('contact').order_by('-created_at')
 
     @extend_schema(
         tags=["Loans"],
