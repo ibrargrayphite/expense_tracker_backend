@@ -6,6 +6,9 @@ from tracker.models import (
 )
 from django.db import transaction
 from django.db.models import F, Sum
+import logging
+
+logger = logging.getLogger(__name__)
 
 class InternalTransactionSerializer(serializers.ModelSerializer):
     from_account_name = serializers.CharField(source='from_account.account_name', read_only=True)
@@ -307,12 +310,18 @@ class TransactionSerializer(serializers.ModelSerializer):
                     
                     loan.is_closed = (loan.remaining_amount <= 0)
                     loan.save()
+                    logger.info(
+                        "Loan %s updated (type=%s): remaining=%.2f, closed=%s",
+                        loan.id, stype, loan.remaining_amount, loan.is_closed
+                    )
                 
                 # 6. Update Account Balance atomically using F() expressions
                 # This prevents race conditions if two requests update the same account simultaneously
                 if stype in ['INCOME', 'LOAN_TAKEN', 'REIMBURSEMENT']:
                     Account.objects.filter(pk=account.pk).update(balance=F('balance') + amount)
+                    logger.info("Balance +%.2f on account %s (type=%s)", amount, account.pk, stype)
                 else:
                     Account.objects.filter(pk=account.pk).update(balance=F('balance') - amount)
+                    logger.info("Balance -%.2f on account %s (type=%s)", amount, account.pk, stype)
                 
         return transaction_instance

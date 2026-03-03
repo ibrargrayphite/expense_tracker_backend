@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions
+import logging
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
@@ -21,6 +22,7 @@ from drf_spectacular.utils import (
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
 
+logger = logging.getLogger(__name__)
 
 # ── Inline response serializers for documentation ──────────────────────────
 
@@ -306,6 +308,7 @@ class UserViewSet(viewsets.ModelViewSet):
         try:
             user = User.objects.filter(email=email).first()
             if not user:
+                logger.warning("Password reset requested for unknown email: %s", email)
                 return Response({'detail': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
                 
             token = default_token_generator.make_token(user)
@@ -345,8 +348,10 @@ class UserViewSet(viewsets.ModelViewSet):
                     html_message=html_content
                 )
 
+            logger.info("Password reset email sent to user %s (id=%s)", email, user.id)
             return Response({"detail": "Password reset link sent to your email."})
         except Exception as e:
+            logger.error("Password reset error for email %s: %s", email, e, exc_info=True)
             return Response({'detail': 'An error occurred.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @extend_schema(
@@ -392,9 +397,11 @@ class UserViewSet(viewsets.ModelViewSet):
             uid = force_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(pk=uid)
         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            logger.warning("Password reset with invalid uid: %s", uidb64)
             return Response({"detail": "Invalid or expired reset link."}, status=status.HTTP_400_BAD_REQUEST)
 
         if not default_token_generator.check_token(user, token):
+            logger.warning("Password reset with invalid/expired token for user %s", user.id)
             return Response({"detail": "Invalid or expired reset link."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -404,4 +411,5 @@ class UserViewSet(viewsets.ModelViewSet):
 
         user.set_password(new_password)
         user.save()
+        logger.info("Password reset successfully for user %s", user.id)
         return Response({"detail": "Password has been reset successfully."})

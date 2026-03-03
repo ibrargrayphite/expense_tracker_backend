@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions
+import logging
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from tracker.models import Contact, ContactAccount
@@ -12,6 +13,8 @@ from drf_spectacular.utils import (
     extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample, OpenApiResponse
 )
 from drf_spectacular.types import OpenApiTypes
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -147,6 +150,10 @@ class ContactViewSet(viewsets.ModelViewSet):
         if Contact.objects.filter(user=self.request.user, first_name=serializer.validated_data['first_name'], last_name=serializer.validated_data['last_name']).exists():
             raise ValidationError("A contact with this name already exists.")
         serializer.save(user=self.request.user)
+        logger.info("Contact created by user %s: %s %s",
+                    self.request.user.id,
+                    serializer.validated_data.get('first_name', ''),
+                    serializer.validated_data.get('last_name', ''))
 
     def list(self, request, *args, **kwargs):
         from django.core.cache import cache
@@ -159,11 +166,14 @@ class ContactViewSet(viewsets.ModelViewSet):
             cache_key = contacts_list_key(request.user.id)
             cached = cache.get(cache_key)
             if cached is not None:
+                logger.debug("Contacts cache HIT for user %s", request.user.id)
                 return Response(cached)
+            logger.debug("Contacts cache MISS for user %s", request.user.id)
 
         response = super().list(request, *args, **kwargs)
 
         if not has_filters:
+            logger.debug("Contacts cache SET for user %s", request.user.id)
             cache.set(cache_key, response.data, CACHE_TTL)
 
         return response

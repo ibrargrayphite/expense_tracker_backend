@@ -7,6 +7,7 @@ from tracker.models import InternalTransaction, Transaction, TransactionAccount,
 from tracker.serializers.transaction import InternalTransactionSerializer, TransactionSerializer
 from tracker.pagination import TransactionResultsSetPagination
 import io
+import logging
 import requests
 import openpyxl
 from openpyxl.styles import Font, Alignment
@@ -25,6 +26,7 @@ from drf_spectacular.utils import (
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers as drf_serializers
 
+logger = logging.getLogger(__name__)
 
 @extend_schema_view(
     list=extend_schema(
@@ -458,16 +460,18 @@ class TransactionViewSet(mixins.CreateModelMixin,
     def perform_create(self, serializer):
         try:
             serializer.save()
+            logger.info("Transaction created by user %s", self.request.user.id)
         except ValidationError as e:
+            logger.warning("Transaction validation failed for user %s: %s", self.request.user.id, e)
             raise e
         except Exception as e:
+            logger.error("Transaction creation error for user %s: %s", self.request.user.id, e, exc_info=True)
             raise ValidationError({'detail': str(e)})
 
     def list(self, request, *args, **kwargs):
         from django.core.cache import cache
         from tracker.cache import transactions_list_key, CACHE_TTL
 
-        # Only cache plain, unfiltered first-page requests
         _FILTER_PARAMS = {
             'type', 'account', 'contact', 'expense_category',
             'income_source', 'start_date', 'end_date',
@@ -479,11 +483,14 @@ class TransactionViewSet(mixins.CreateModelMixin,
             cache_key = transactions_list_key(request.user.id)
             cached = cache.get(cache_key)
             if cached is not None:
+                logger.debug("Transactions cache HIT for user %s", request.user.id)
                 return Response(cached)
+            logger.debug("Transactions cache MISS for user %s", request.user.id)
 
         response = super().list(request, *args, **kwargs)
 
         if not has_filters:
+            logger.debug("Transactions cache SET for user %s", request.user.id)
             cache.set(cache_key, response.data, CACHE_TTL)
 
         return response

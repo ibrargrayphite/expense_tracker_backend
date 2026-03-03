@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions, mixins
+import logging
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -12,6 +13,7 @@ from drf_spectacular.utils import (
 )
 from drf_spectacular.types import OpenApiTypes
 
+logger = logging.getLogger(__name__)
 
 @extend_schema_view(
     list=extend_schema(
@@ -83,11 +85,14 @@ class LoanViewSet(mixins.ListModelMixin,
             cache_key = loans_list_key(request.user.id)
             cached = cache.get(cache_key)
             if cached is not None:
+                logger.debug("Loans cache HIT for user %s", request.user.id)
                 return Response(cached)
+            logger.debug("Loans cache MISS for user %s", request.user.id)
 
         response = super().list(request, *args, **kwargs)
 
         if not has_filters:
+            logger.debug("Loans cache SET for user %s", request.user.id)
             cache.set(cache_key, response.data, CACHE_TTL)
 
         return response

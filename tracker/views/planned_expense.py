@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions
+import logging
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from tracker.models import PlannedExpense
@@ -6,6 +7,7 @@ from tracker.serializers.planned_expense import PlannedExpenseSerializer
 from tracker.pagination import StandardResultsSetPagination
 from django.utils import timezone
 
+logger = logging.getLogger(__name__)
 
 class PlannedExpenseViewSet(viewsets.ModelViewSet):
     """
@@ -59,11 +61,14 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
             cache_key = planned_expenses_list_key(request.user.id)
             cached = cache.get(cache_key)
             if cached is not None:
+                logger.debug("Planned expenses cache HIT for user %s", request.user.id)
                 return Response(cached)
+            logger.debug("Planned expenses cache MISS for user %s", request.user.id)
 
         response = super().list(request, *args, **kwargs)
 
         if not has_filters:
+            logger.debug("Planned expenses cache SET for user %s", request.user.id)
             cache.set(cache_key, response.data, CACHE_TTL)
 
         return response

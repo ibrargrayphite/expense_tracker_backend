@@ -13,6 +13,9 @@ from tracker.cache import invalidate_user_transactions, CACHE_TTL
 
 from django.core.cache import cache
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Honour the TTL from settings (set via CACHE_TTL env var, default 5 min)
 CACHE_TTL: int = getattr(settings, 'CACHE_TTL', 300)
@@ -47,27 +50,34 @@ def planned_expenses_list_key(user_id: int) -> str:
 # ── Invalidation helpers ──────────────────────────────────────────────────────
 
 def invalidate_user_transactions(user_id: int) -> None:
-    cache.delete(transactions_list_key(user_id))
+    key = transactions_list_key(user_id)
+    cache.delete(key)
+    logger.debug("Cache invalidated [transactions] for user %s", user_id)
 
 
 def invalidate_user_contacts(user_id: int) -> None:
-    cache.delete(contacts_list_key(user_id))
+    key = contacts_list_key(user_id)
+    cache.delete(key)
+    logger.debug("Cache invalidated [contacts] for user %s", user_id)
 
 
 def invalidate_user_accounts(user_id: int) -> None:
     # Accounts appear inside transaction data, bust both
-    cache.delete_many([
-        accounts_list_key(user_id),
-        transactions_list_key(user_id),
-    ])
+    keys = [accounts_list_key(user_id), transactions_list_key(user_id)]
+    cache.delete_many(keys)
+    logger.debug("Cache invalidated [accounts + transactions] for user %s", user_id)
 
 
 def invalidate_user_loans(user_id: int) -> None:
-    cache.delete(loans_list_key(user_id))
+    key = loans_list_key(user_id)
+    cache.delete(key)
+    logger.debug("Cache invalidated [loans] for user %s", user_id)
 
 
 def invalidate_user_planned_expenses(user_id: int) -> None:
-    cache.delete(planned_expenses_list_key(user_id))
+    key = planned_expenses_list_key(user_id)
+    cache.delete(key)
+    logger.debug("Cache invalidated [planned_expenses] for user %s", user_id)
 
 
 def invalidate_all_user_caches(user_id: int) -> None:
@@ -79,3 +89,4 @@ def invalidate_all_user_caches(user_id: int) -> None:
         loans_list_key(user_id),
         planned_expenses_list_key(user_id),
     ])
+    logger.debug("All caches invalidated for user %s", user_id)

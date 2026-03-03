@@ -1,4 +1,5 @@
 from rest_framework import viewsets, permissions
+import logging
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
@@ -12,6 +13,8 @@ from drf_spectacular.utils import (
     extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample, OpenApiResponse
 )
 from drf_spectacular.types import OpenApiTypes
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -123,11 +126,14 @@ class AccountViewSet(viewsets.ModelViewSet):
             cache_key = accounts_list_key(request.user.id)
             cached = cache.get(cache_key)
             if cached is not None:
+                logger.debug("Accounts cache HIT for user %s", request.user.id)
                 return Response(cached)
+            logger.debug("Accounts cache MISS for user %s", request.user.id)
 
         response = super().list(request, *args, **kwargs)
 
         if not has_filters:
+            logger.debug("Accounts cache SET for user %s", request.user.id)
             cache.set(cache_key, response.data, CACHE_TTL)
 
         return response
@@ -149,14 +155,23 @@ class AccountViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+        logger.info("Account created by user %s: %s (%s)",
+                    self.request.user.id,
+                    serializer.validated_data.get('account_name', ''),
+                    serializer.validated_data.get('bank_name', ''))
 
     def perform_update(self, serializer):
         instance = self.get_object()
         if instance.bank_name.upper() == 'CASH':
+            logger.warning("User %s attempted to modify the CASH account", self.request.user.id)
             raise ValidationError({"detail": "The system 'CASH' account cannot be modified."})
         serializer.save()
+        logger.info("Account %s updated by user %s", instance.id, self.request.user.id)
 
     def perform_destroy(self, instance):
         if instance.bank_name.upper() == 'CASH':
+            logger.warning("User %s attempted to delete the CASH account", self.request.user.id)
             raise ValidationError({"detail": "The system 'CASH' account cannot be deleted."})
+        logger.info("Account %s deleted by user %s", instance.id, self.request.user.id)
         instance.delete()
+
