@@ -348,7 +348,11 @@ class UserViewSet(viewsets.ModelViewSet):
         },
     )
     @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
-    async def forgot_password(self, request):
+    def forgot_password(self, request):
+        from asgiref.sync import async_to_sync
+        return async_to_sync(self._forgot_password_async)(request)
+
+    async def _forgot_password_async(self, request):
         from asgiref.sync import sync_to_async
         import asyncio
         

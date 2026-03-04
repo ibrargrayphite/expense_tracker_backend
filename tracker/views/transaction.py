@@ -271,7 +271,11 @@ class TransactionViewSet(mixins.CreateModelMixin,
         },
     )
     @action(detail=False, methods=['get'])
-    async def export_excel(self, request):
+    def export_excel(self, request):
+        from asgiref.sync import async_to_sync
+        return async_to_sync(self._export_excel_async)(request)
+
+    async def _export_excel_async(self, request):
         from asgiref.sync import sync_to_async
         import httpx
         import asyncio
