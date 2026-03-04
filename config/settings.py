@@ -19,7 +19,11 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'expensetrackerbackend-production-0360.up.railway.app', 'magenta-tartufo-f4b4b1.netlify.app']
+ALLOWED_HOSTS = ['localhost',
+                '127.0.0.1', 
+                'expensetrackerbackend-production-0360.up.railway.app', 
+                'magenta-tartufo-f4b4b1.netlify.app',
+                'expensetrackerfrontend-production-4e30.up.railway.app']
 
 
 # Application definition
@@ -312,6 +316,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:8000',
     'https://expensetrackerbackend-production-0360.up.railway.app',
     'https://magenta-tartufo-f4b4b1.netlify.app',
+    'https://expensetrackerfrontend-production-4e30.up.railway.app'
 ]
 CORS_ALLOW_ALL_ORIGINS = DEBUG # Use allow all only if debug is true if you want, but better to use allowed origins
 CSRF_TRUSTED_ORIGINS = [
@@ -319,6 +324,7 @@ CSRF_TRUSTED_ORIGINS = [
     'http://127.0.0.1:8000',
     'https://expensetrackerbackend-production-0360.up.railway.app',
     'https://magenta-tartufo-f4b4b1.netlify.app',
+    'https://expensetrackerfrontend-production-4e30.up.railway.app'
 ]
 CORS_ALLOW_METHODS = [
     "GET",
