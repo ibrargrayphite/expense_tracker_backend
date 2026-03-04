@@ -1,1 +1,1 @@
-web: gunicorn -k uvicorn.workers.UvicornWorker config.asgi:application
+web: gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker --workers 2 --threads 4 --bind 0.0.0.0:8000
