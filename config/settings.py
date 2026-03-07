@@ -234,47 +234,8 @@ else:
     }
 
 # ── Logging ────────────────────────────────────────────────────────────────
-# stdout is always enabled — Railway captures this stream for its log dashboard.
-#
-# File logging (via Railway Volume):
-#   - Set LOG_DIR env var to the mounted volume path, e.g. /app/logs
-#   - Railway will persist files written there across deployments
-#   - Without LOG_DIR, production stays stdout-only; locally falls back to logs/
-
-_LOG_DIR_ENV = config('LOG_DIR', default='')
-
-if _LOG_DIR_ENV:
-    # Explicit path set — used for Railway Volume in production
-    LOGS_DIR = Path(_LOG_DIR_ENV)
-elif ENVIRONMENT != 'production':
-    # Local development fallback
-    LOGS_DIR = BASE_DIR / 'logs'
-else:
-    LOGS_DIR = None
-
-if LOGS_DIR:
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
-
-_log_handlers = {
-    'console': {
-        'class': 'logging.StreamHandler',
-        'stream': 'ext://sys.stdout',  # explicit stdout (Railway captures this stream)
-        'formatter': 'verbose' if ENVIRONMENT == 'production' else 'simple',
-    },
-}
-
-_app_log_handlers = ['console']
-
-if LOGS_DIR:
-    _log_handlers['file'] = {
-        'class': 'logging.handlers.RotatingFileHandler',
-        'filename': str(LOGS_DIR / 'app.log'),
-        'maxBytes': 5 * 1024 * 1024,   # 5 MB per file
-        'backupCount': 5,
-        'formatter': 'verbose',
-        'encoding': 'utf-8',
-    }
-    _app_log_handlers = ['console', 'file']
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
 
 LOGGING = {
     'version': 1,
@@ -292,27 +253,46 @@ LOGGING = {
         },
     },
 
-    'handlers': _log_handlers,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'DEBUG',
+            'formatter': 'verbose' if ENVIRONMENT == 'production' else 'simple',
+        },
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': str(LOGS_DIR / 'app.log'),
+            'maxBytes': 5 * 1024 * 1024,   # 5 MB per file
+            'backupCount': 5,
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+        },
+    },
 
     'loggers': {
         # All tracker.* modules
         'tracker': {
-            'handlers': _app_log_handlers,
-            'level': 'DEBUG' if DEBUG else 'INFO',
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
             'propagate': False,
         },
         # 4xx / 5xx request errors
         'django.request': {
-            'handlers': _app_log_handlers,
-            'level': 'WARNING',
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
             'propagate': False,
         },
         # DB query log — only in DEBUG to avoid noise
         'django.db.backends': {
-            'handlers': ['console'],
-            'level': 'DEBUG' if DEBUG else 'WARNING',
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
             'propagate': False,
         },
+    },
+
+    'root': {                         # catch anything not defined
+        'handlers': ['console', 'file'],
+        'level': 'DEBUG',
     },
 }
 
