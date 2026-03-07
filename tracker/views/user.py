@@ -105,7 +105,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['create', 'forgot_password', 'reset_password']:
             permission_classes = [permissions.AllowAny]
-        elif self.action == 'me':
+        elif self.action in ['me', 'update_me']:
             permission_classes = [permissions.IsAuthenticated]
         else:
             permission_classes = [permissions.IsAdminUser]
