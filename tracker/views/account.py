@@ -115,6 +115,87 @@ class AccountViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Account.objects.filter(user=self.request.user).select_related('user').order_by('-created_at')
 
+    # ------------------------------------------------------------------
+    # Optimised recent-transactions: batch-load for all accounts at once
+    # ------------------------------------------------------------------
+    def _build_recent_transactions_map(self, account_ids):
+        """
+        Fetch the 5 most recent transactions for each account in *account_ids*
+        using a single batched DB query, returning::
+
+            {account_id: [Transaction, ...], ...}
+
+        Covers both direct account transactions (via TransactionAccount) and
+        internal transfer transactions (via InternalTransaction FK fields).
+        All related data needed by TransactionSerializer is select/prefetched
+        so the serializer runs with zero additional queries.
+        """
+        from tracker.models import Transaction
+        from django.db.models import Q
+
+        if not account_ids:
+            return {}
+
+        id_set = set(account_ids)
+
+        transactions = list(
+            Transaction.objects
+            .filter(
+                Q(accounts__account_id__in=id_set) |
+                Q(internal_transaction__from_account_id__in=id_set) |
+                Q(internal_transaction__to_account_id__in=id_set)
+            )
+            .distinct()
+            .select_related(
+                'internal_transaction__from_account',
+                'internal_transaction__to_account',
+                'contact',
+                'contact_account',
+            )
+            .prefetch_related(
+                'accounts__splits__expense_category',
+                'accounts__splits__income_source',
+                'accounts__splits__loan__contact',
+            )
+            .order_by('-date', '-created_at')
+        )
+
+        # Distribute transactions to their accounts in Python (no extra queries).
+        result = {aid: [] for aid in id_set}
+        for tx in transactions:
+            # Direct account transactions
+            for ta in tx.accounts.all():
+                aid = ta.account_id
+                if aid in result and len(result[aid]) < 5:
+                    result[aid].append(tx)
+            # Internal transfer transactions
+            it = tx.internal_transaction
+            if it:
+                for aid in (it.from_account_id, it.to_account_id):
+                    if aid in result and len(result[aid]) < 5:
+                        if tx not in result[aid]:
+                            result[aid].append(tx)
+
+        return result
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        action = getattr(self, 'action', None)
+
+        if action == 'list':
+            account_ids = list(
+                self.filter_queryset(self.get_queryset()).values_list('id', flat=True)
+            )
+            ctx['recent_transactions_map'] = self._build_recent_transactions_map(account_ids)
+        elif action == 'retrieve':
+            try:
+                account_ids = [int(self.kwargs.get('pk'))]
+            except (TypeError, ValueError):
+                account_ids = []
+            ctx['recent_transactions_map'] = self._build_recent_transactions_map(account_ids)
+
+        return ctx
+
     def list(self, request, *args, **kwargs):
         from django.core.cache import cache
         from tracker.cache import accounts_list_key, CACHE_TTL
@@ -174,4 +255,5 @@ class AccountViewSet(viewsets.ModelViewSet):
             raise ValidationError({"detail": "The system 'CASH' account cannot be deleted."})
         logger.info("Account %s deleted by user %s", instance.id, self.request.user.id)
         instance.delete()
+
 
