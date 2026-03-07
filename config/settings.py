@@ -241,6 +241,7 @@ else:
 _log_handlers = {
     'console': {
         'class': 'logging.StreamHandler',
+        'stream': 'ext://sys.stdout',  # explicit stdout (Railway captures this stream)
         'formatter': 'verbose' if ENVIRONMENT == 'production' else 'simple',
     },
 }
