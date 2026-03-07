@@ -6,7 +6,7 @@ from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from tracker.models import Account
-from tracker.serializers.account import AccountSerializer
+from tracker.serializers.account import AccountSerializer, AccountDropdownSerializer
 from tracker.pagination import StandardResultsSetPagination
 from tracker.filters import AccountFilter
 from drf_spectacular.utils import (
@@ -150,7 +150,7 @@ class AccountViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def dropdown(self, request):
         queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
+        serializer = AccountDropdownSerializer(queryset, many=True, context={'request': request})
         return Response(serializer.data)
 
     def perform_create(self, serializer):

@@ -54,3 +54,10 @@ class AccountSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("An account with this number already exists for a contact.")
             
         return value.strip()
+
+class AccountDropdownSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for dropdown/select lists. No recent_transactions overhead."""
+
+    class Meta:
+        model = Account
+        fields = ('id', 'bank_name', 'account_name', 'account_number', 'iban', 'balance')
