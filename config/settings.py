@@ -234,8 +234,31 @@ else:
     }
 
 # ── Logging ────────────────────────────────────────────────────────────────
-LOGS_DIR = BASE_DIR / 'logs'
-LOGS_DIR.mkdir(exist_ok=True)
+# In production (e.g. Railway), logs must go to stdout — file I/O is ephemeral
+# and invisible in the Railway dashboard. The file handler is only registered
+# in development so local app.log debugging still works.
+
+_log_handlers = {
+    'console': {
+        'class': 'logging.StreamHandler',
+        'formatter': 'verbose' if ENVIRONMENT == 'production' else 'simple',
+    },
+}
+
+_app_log_handlers = ['console']
+
+if ENVIRONMENT != 'production':
+    LOGS_DIR = BASE_DIR / 'logs'
+    LOGS_DIR.mkdir(exist_ok=True)
+    _log_handlers['file'] = {
+        'class': 'logging.handlers.RotatingFileHandler',
+        'filename': str(LOGS_DIR / 'app.log'),
+        'maxBytes': 5 * 1024 * 1024,   # 5 MB per file
+        'backupCount': 5,
+        'formatter': 'verbose',
+        'encoding': 'utf-8',
+    }
+    _app_log_handlers = ['console', 'file']
 
 LOGGING = {
     'version': 1,
@@ -253,31 +276,18 @@ LOGGING = {
         },
     },
 
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose' if ENVIRONMENT == 'production' else 'simple',
-        },
-        'file': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': str(LOGS_DIR / 'app.log'),
-            'maxBytes': 5 * 1024 * 1024,   # 5 MB per file
-            'backupCount': 5,
-            'formatter': 'verbose',
-            'encoding': 'utf-8',
-        },
-    },
+    'handlers': _log_handlers,
 
     'loggers': {
         # All tracker.* modules
         'tracker': {
-            'handlers': ['console', 'file'],
+            'handlers': _app_log_handlers,
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
         # 4xx / 5xx request errors
         'django.request': {
-            'handlers': ['console', 'file'],
+            'handlers': _app_log_handlers,
             'level': 'WARNING',
             'propagate': False,
         },
