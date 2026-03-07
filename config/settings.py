@@ -234,9 +234,26 @@ else:
     }
 
 # ── Logging ────────────────────────────────────────────────────────────────
-# In production (e.g. Railway), logs must go to stdout — file I/O is ephemeral
-# and invisible in the Railway dashboard. The file handler is only registered
-# in development so local app.log debugging still works.
+# stdout is always enabled — Railway captures this stream for its log dashboard.
+#
+# File logging (via Railway Volume):
+#   - Set LOG_DIR env var to the mounted volume path, e.g. /app/logs
+#   - Railway will persist files written there across deployments
+#   - Without LOG_DIR, production stays stdout-only; locally falls back to logs/
+
+_LOG_DIR_ENV = config('LOG_DIR', default='')
+
+if _LOG_DIR_ENV:
+    # Explicit path set — used for Railway Volume in production
+    LOGS_DIR = Path(_LOG_DIR_ENV)
+elif ENVIRONMENT != 'production':
+    # Local development fallback
+    LOGS_DIR = BASE_DIR / 'logs'
+else:
+    LOGS_DIR = None
+
+if LOGS_DIR:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 _log_handlers = {
     'console': {
@@ -248,9 +265,7 @@ _log_handlers = {
 
 _app_log_handlers = ['console']
 
-if ENVIRONMENT != 'production':
-    LOGS_DIR = BASE_DIR / 'logs'
-    LOGS_DIR.mkdir(exist_ok=True)
+if LOGS_DIR:
     _log_handlers['file'] = {
         'class': 'logging.handlers.RotatingFileHandler',
         'filename': str(LOGS_DIR / 'app.log'),
