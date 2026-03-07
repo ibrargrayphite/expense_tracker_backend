@@ -31,6 +31,10 @@ ALLOWED_HOSTS = ['localhost',
 INSTALLED_APPS = [
     'unfold',
     'cloudinary_storage',
+    'django_unfold',
+    'django_unfold.contrib.filters',
+    'django_unfold.contrib.forms',
+    'django_celery_beat',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -142,7 +146,21 @@ DEFAULT_FROM_EMAIL = config('SENDGRID_FROM_EMAIL')
 FRONTEND_URL = config('FRONTEND_URL')
 
 
-# Static files (CSS, JavaScript, Images)
+# Celery Settings
+CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6373')
+CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6373')
+CELERY_ACCEPT_CONTENT = ['application/json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    'send-planned-expense-reminders-daily': {
+        'task': 'tracker.tasks.send_planned_expense_reminders',
+        'schedule': crontab(hour=19, minute=0), # Run daily at midnight
+    },
+}
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
