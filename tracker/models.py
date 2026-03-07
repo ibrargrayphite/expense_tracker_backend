@@ -283,8 +283,8 @@ class TransactionSplit(models.Model):
 class PlannedExpense(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='planned_expenses')
     amount = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))])
-    start_date = models.DateField()
-    end_date = models.DateField()
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
     category = models.ForeignKey(ExpenseCategory, null=True, blank=True, on_delete=models.SET_NULL, related_name='planned_expenses')
     note = models.TextField(blank=True, null=True)
     is_completed = models.BooleanField(default=False)

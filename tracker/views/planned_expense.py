@@ -26,15 +26,15 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = PlannedExpense.objects.filter(user=self.request.user).select_related('category')
-        today = timezone.localdate()
+        now = timezone.now()
 
         status = self.request.query_params.get('status')
         if status == 'completed':
             qs = qs.filter(is_completed=True)
         elif status == 'overdue':
-            qs = qs.filter(is_completed=False, end_date__lt=today)
+            qs = qs.filter(is_completed=False, end_date__lt=now)
         elif status == 'pending':
-            qs = qs.filter(is_completed=False, end_date__gte=today)
+            qs = qs.filter(is_completed=False, end_date__gte=now)
 
         category = self.request.query_params.get('category')
         if category:
@@ -83,7 +83,6 @@ class PlannedExpenseViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def dropdown(self, request):
         """Return all non-completed planned expenses as flat list for dropdown."""
-        today = timezone.localdate()
         queryset = PlannedExpense.objects.filter(
             user=request.user,
             is_completed=False
